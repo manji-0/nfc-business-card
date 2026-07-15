@@ -19,6 +19,8 @@ from jlcpcb_limits import (
     XQFN_PAD_ROW_MM,
 )
 from bake_name_enig import bake_name_enig_sexpr
+from kamae.boundary import require_existing_file
+from kamae.result import Err, unwrap
 from kicad10 import (
     PCB_FORMAT_VERSION,
     fp_circle,
@@ -647,14 +649,17 @@ def write_schematic(schematic_uuid: str) -> None:
 def build_silk_bitmaps(ant_cx: float, ant_cy: float) -> str:
     """Front QR + NFC icon + Pillow silk PNGs, back 2x2 logos as KiCad images."""
     required = [
-        ASSETS / "qr-silk.png",
-        ASSETS / "nfc-n-mark-silk.png",
-        ASSETS / "roles-silk.png",
-        ASSETS / "contacts-silk.png",
+        (ASSETS / "qr-silk.png", "qr-silk.png"),
+        (ASSETS / "nfc-n-mark-silk.png", "nfc-n-mark-silk.png"),
+        (ASSETS / "roles-silk.png", "roles-silk.png"),
+        (ASSETS / "contacts-silk.png", "contacts-silk.png"),
     ]
-    for path in required:
-        if not path.exists():
-            raise FileNotFoundError(f"Missing {path} — run make_qr_silk.py / make_nfc_logo.py / make_text_silk.py")
+    for path, label in required:
+        match require_existing_file(path, label=label):
+            case Err(error=msg):
+                raise FileNotFoundError(f"{msg} — run make_qr_silk.py / make_nfc_logo.py / make_text_silk.py")
+            case _:
+                pass
 
     parts = [
         bitmap_sexpr_rgba(
@@ -691,8 +696,7 @@ def build_silk_bitmaps(ant_cx: float, ant_cy: float) -> str:
     logo_mm, back_items = back_logo_grid()
     for filename, cx, cy in back_items:
         path = LOGOS / filename
-        if not path.exists():
-            raise FileNotFoundError(f"Missing {path} — run scripts/make_back_logos.py")
+        unwrap(require_existing_file(path, label=filename), context="back logo")
         parts.append(
             bitmap_sexpr(
                 path,

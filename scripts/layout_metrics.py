@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PIL import ImageFont
 
+from kamae.types import InkBounds, Mm
 from silk_layout import NAME_CAP_HEIGHT_MM, NAME_Y_MM, TEXT_LEFT_MM
 
 PREVIEW_PPM = 28
@@ -31,20 +32,20 @@ def line_ink_bounds_mm(
     font_size_mm: float,
     font_path: Path = ARIAL,
     anchor: str = "lt",
-) -> tuple[float, float, float, float]:
-    """Return ink (left, bottom, right, top) in preview mm (Y down from top)."""
+) -> InkBounds:
+    """Return ink box in preview mm (Y down from top)."""
     bb = _font(font_path, font_size_mm).getbbox(text)
-    left = origin_x_mm + bb[0] / PREVIEW_PPM
-    right = origin_x_mm + bb[2] / PREVIEW_PPM
+    left = Mm(origin_x_mm + bb[0] / PREVIEW_PPM)
+    right = Mm(origin_x_mm + bb[2] / PREVIEW_PPM)
     if anchor == "lt":
-        top = origin_y_mm + bb[1] / PREVIEW_PPM
-        bottom = origin_y_mm + bb[3] / PREVIEW_PPM
+        top = Mm(origin_y_mm + bb[1] / PREVIEW_PPM)
+        bottom = Mm(origin_y_mm + bb[3] / PREVIEW_PPM)
     elif anchor == "lb":
-        bottom = origin_y_mm + bb[1] / PREVIEW_PPM
-        top = origin_y_mm + bb[3] / PREVIEW_PPM
+        bottom = Mm(origin_y_mm + bb[1] / PREVIEW_PPM)
+        top = Mm(origin_y_mm + bb[3] / PREVIEW_PPM)
     else:
         raise ValueError(anchor)
-    return left, bottom, right, top
+    return InkBounds(left=left, bottom=bottom, right=right, top=top)
 
 
 def block_max_ink_width_mm(
@@ -57,13 +58,13 @@ def block_max_ink_width_mm(
     return max(line_ink_width_mm(line, font_size_mm=font_size_mm, font_path=font_path) for line in lines)
 
 
-def name_ink_bounds_mm(text: str) -> tuple[float, float, float, float]:
+def name_ink_bounds_mm(text: str) -> InkBounds:
     """Preview ENIG name ink box (Georgia Bold, anchor lt at NAME_Y)."""
     return line_ink_bounds_mm(
         text,
-        origin_x_mm=TEXT_LEFT_MM,
-        origin_y_mm=NAME_Y_MM,
-        font_size_mm=NAME_CAP_HEIGHT_MM,
+        origin_x_mm=float(TEXT_LEFT_MM),
+        origin_y_mm=float(NAME_Y_MM),
+        font_size_mm=float(NAME_CAP_HEIGHT_MM),
         font_path=GEORGIA_BOLD,
         anchor="lt",
     )

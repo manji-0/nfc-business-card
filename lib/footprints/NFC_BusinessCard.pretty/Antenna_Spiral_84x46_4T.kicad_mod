@@ -35,6 +35,6 @@
 	(fp_line (start 12.3000 -20.3000) (end 12.3000 20.3000) (layer "F.Cu") (stroke (width 0.25) (type solid)))
 	(fp_line (start 12.3000 20.3000) (end -12.3000 20.3000) (layer "F.Cu") (stroke (width 0.25) (type solid)))
 	(fp_line (start -12.3000 20.3000) (end -12.3000 -19.7500) (layer "F.Cu") (stroke (width 0.25) (type solid)))
-	(pad "1" smd circle (at -14.5000 -22.5000) (size 0.6 0.6) (layers "F.Cu" "F.Mask") (uuid 093d90e0-6370-4f83-9c81-2fd3d9c97357))
-	(pad "2" smd circle (at -12.3000 -19.7500) (size 0.6 0.6) (layers "F.Cu" "F.Mask") (uuid b9e8acc7-99f6-414b-89e5-bad16ef58bf0))
+	(pad "1" smd circle (at -14.5000 -22.5000) (size 0.6 0.6) (layers "F.Cu" "F.Mask") (uuid ff0bb689-cbfa-429b-988c-956150059c11))
+	(pad "2" smd circle (at -12.3000 -19.7500) (size 0.6 0.6) (layers "F.Cu" "F.Mask") (uuid 600ee8ac-c267-47b7-861c-c8d96bc114d1))
 )

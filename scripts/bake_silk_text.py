@@ -37,7 +37,6 @@ def build_roles_silk_sexpr() -> str:
             font_size_mm=ROLE_FONT_SIZE_MM,
             font_path=ARIAL,
         ),
-        preview_coords=True,
     )
 
 
@@ -58,5 +57,4 @@ def build_contacts_silk_sexpr() -> str:
             font_size_mm=CONTACT_FONT_SIZE_MM,
             font_path=ARIAL,
         ),
-        preview_coords=True,
     )

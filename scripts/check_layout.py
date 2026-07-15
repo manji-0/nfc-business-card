@@ -115,7 +115,7 @@ if not (1.5 <= L_uh <= 6.0):
     warnings.append(f"L estimate {L_uh:.2f} µH outside expected band")
 
 pcb_path = ROOT / "nfc-business-card.kicad_pcb"
-_, name_bottom_preview, _, _ = name_ink_bounds_mm(NAME)
+name_bottom_preview = float(name_ink_bounds_mm(NAME).bottom)
 name_roles_gap = ROLES_Y0_MM - name_bottom_preview
 if name_roles_gap < 1.8:
     errors.append(f"Name/roles gap {name_roles_gap:.2f} mm < 1.8 mm (preview coords)")
@@ -129,7 +129,8 @@ if pcb_path.exists():
         polys = parse_name_polys_from_pcb(pcb_path)
         _, name_min_y, name_right, _name_max_y = polys_bounds(polys)
         margin = TEXT_ZONE_W - name_right
-        _, _target_bottom, target_right, _ = name_ink_bounds_mm(NAME)
+        target = name_ink_bounds_mm(NAME)
+        target_right = float(target.right)
         if abs(name_right - target_right) > 0.3:
             warnings.append(f"Name right {name_right:.2f} mm vs preview target {target_right:.2f} mm")
         elif margin < NAME_RIGHT_MARGIN_MM - 0.5:
