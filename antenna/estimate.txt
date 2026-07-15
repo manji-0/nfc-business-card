@@ -1,0 +1,10 @@
+outer_w=29.0 mm
+outer_h=45.0 mm
+turns=5
+width=0.25 gap=0.3
+d_avg=34.25 fill=0.080
+L_estimate≈1.89 uH (rough)
+target≈2.2 µH for ~14.5 MHz nominal with 50 pF + parasitics
+chip_island_w=n/a
+text_zone_w=50.0 mm
+comp_strip_w=7.0 mm

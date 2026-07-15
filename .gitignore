@@ -1,0 +1,17 @@
+# KiCad backups / autosave
+*.kicad_pcb-bak
+*-backups/
+_autosave-*
+\#auto_saved_files\#
+*.lck
+*.kicad_prl
+
+# OS
+.DS_Store
+.history/
+.glb/
+
+# Python
+__pycache__/
+*.pyc
+.venv/

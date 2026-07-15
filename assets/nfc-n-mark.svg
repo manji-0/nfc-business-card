@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NFC Forum Generation One N-Mark (faithful geometric recreation for silkscreen).
+  Trademark of NFC Forum, Inc. Use subject to NFC Forum N-Mark license:
+  https://nfc-forum.org/build/branding
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="1200" height="1200">
+  <g fill="#000000" fill-rule="evenodd">
+    <!-- Left stem of N -->
+    <path d="M18 22h16v76H18z"/>
+    <!-- Diagonal of N -->
+    <path d="M28 22 L70 98 L54 98 L12 22z"/>
+    <!-- Right stem of N (upper portion connects to waves) -->
+    <path d="M54 22h16v42H54z"/>
+    <!-- Three concentric signal arcs (official N-Mark waves) -->
+    <!-- Outer -->
+    <path d="M70 28
+             A42 42 0 0 1 70 100
+             L62 96
+             A34 34 0 0 0 62 32
+             Z"/>
+    <!-- Middle -->
+    <path d="M70 40
+             A30 30 0 0 1 70 88
+             L62 84
+             A22 22 0 0 0 62 44
+             Z"/>
+    <!-- Inner -->
+    <path d="M70 52
+             A18 18 0 0 1 70 76
+             L62 72
+             A10 10 0 0 0 62 56
+             Z"/>
+  </g>
+</svg>

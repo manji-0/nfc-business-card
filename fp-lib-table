@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "NFC_BusinessCard")(type "KiCad")(uri "${KIPRJMOD}/lib/footprints/NFC_BusinessCard.pretty")(options "")(descr "NFC business card footprints"))
+)
