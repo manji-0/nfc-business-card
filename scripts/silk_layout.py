@@ -40,6 +40,7 @@ class SilkLayout:
     role_font_size_mm: Mm
     contact_font_size_mm: Mm
     nfc_logo_size_mm: Mm
+    qr_oversize_mm: Mm
     silk_bitmap_px_per_mm: float
     back_logo_margin_x: Mm
     back_logo_gap: Mm
@@ -52,7 +53,7 @@ class SilkLayout:
         return Mm((len(CONTACTS) - 1) * self.contact_line_step_mm + self.contact_line_h_mm)
 
     def qr_size_mm(self) -> Mm:
-        return Mm(self.contact_block_h_mm() + 0.4)
+        return Mm(self.contact_block_h_mm() + self.qr_oversize_mm)
 
     def qr_top_y_mm(self) -> PreviewY:
         return PreviewY(self.contact_qr_center_y_mm - self.qr_size_mm() / 2)
@@ -93,7 +94,7 @@ DEFAULT = SilkLayout(
     name_right_margin_mm=Mm(8.0),
     contact_line_step_mm=Mm(2.4),
     contact_line_h_mm=Mm(1.25),
-    contact_qr_center_y_mm=PreviewY(28.0),
+    contact_qr_center_y_mm=PreviewY(28.5),
     text_left_mm=Mm(5.0),
     contact_x_mm=Mm(16.5),
     name_y_mm=PreviewY(10.5),
@@ -108,6 +109,7 @@ DEFAULT = SilkLayout(
     role_font_size_mm=Mm(1.6),
     contact_font_size_mm=Mm(1.5),
     nfc_logo_size_mm=Mm(12.0),
+    qr_oversize_mm=Mm(1.5),
     silk_bitmap_px_per_mm=40.0,
     back_logo_margin_x=Mm(8.0),
     back_logo_gap=Mm(3.0),

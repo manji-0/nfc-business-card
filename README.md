@@ -17,7 +17,7 @@ Passive NFC PCB business card: **89 × 51 mm**, URL NDEF, rewritable from iPhone
 nfc-business-card.kicad_*   KiCad project
 lib/                        Symbols & footprints
 antenna/                    Design notes + spiral points
-fab/                        Gerber zip, BOM, CPL, checklist
+fab/                        Gerber zip, BOM, CPL, preview, gerber/
 scripts/                    Regenerate project / fab
 parts.md                    Locked BOM
 ```
@@ -25,25 +25,19 @@ parts.md                    Locked BOM
 ## Regenerate design
 
 ```bash
-.venv/bin/python scripts/make_nfc_logo.py
-.venv/bin/python scripts/make_back_logos.py
-.venv/bin/python scripts/make_qr_silk.py
-.venv/bin/python scripts/make_text_silk.py
-.venv/bin/python scripts/generate_kicad_project.py
-.venv/bin/python scripts/render_preview.py
-python3 scripts/export_fab.py
+./task export          # full pipeline: assets → KiCad → preview → check → fab
+./task design          # design only (no Gerber export)
+./task list            # show all tasks
 ```
+
+Individual steps: `./task assets project preview fab` (runs in order).
 
 Open `nfc-business-card.kicad_pro` in KiCad 8+ to edit silk text, tweak antenna, or re-export with **JLCPCB Fabrication Toolkit**.
 
 Photoreal mockup (front + back):
 
 ```bash
-.venv/bin/python scripts/make_nfc_logo.py      # NFC icon silk from assets/nfc-symbol.svg
-.venv/bin/python scripts/make_back_logos.py    # back 2x2 logo silk
-.venv/bin/python scripts/make_qr_silk.py       # inverted QR -> assets/qr-silk.png
-.venv/bin/python scripts/make_text_silk.py    # roles + contacts silk PNGs
-.venv/bin/python scripts/render_preview.py     # fab/preview.png
+./task preview
 ```
 
 Front NFC icon: `assets/nfc-symbol.svg` (from SVG Repo). Check license/terms if you ship commercially.

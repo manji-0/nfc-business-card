@@ -88,17 +88,15 @@ JLCPCB 下限は `scripts/jlcpcb_limits.py` を参照。設計値は JLC 最小�
 | JLC 最小/feature | `scripts/jlcpcb_limits.py` |
 | アンテナターン数・配線 | `scripts/generate_kicad_project.py`（`nfc_layout()`） |
 
-### 再生成コマンド（順序固定）
+### 再生成コマンド
 
 ```bash
-.venv/bin/python scripts/make_nfc_logo.py
-.venv/bin/python scripts/make_back_logos.py
-.venv/bin/python scripts/make_qr_silk.py
-.venv/bin/python scripts/make_text_silk.py
-.venv/bin/python scripts/generate_kicad_project.py
-.venv/bin/python scripts/render_preview.py
-.venv/bin/python scripts/check_layout.py
+./task export          # assets → KiCad → preview → check → fab（発注用 zip まで）
+./task design          # fab 出力なし
+./task list            # タスク一覧
 ```
+
+個別実行: `./task assets project fab` など、複数指定で順に実行。
 
 KiCad 10 が `/Applications/KiCad/` に必要（氏名の TTF ベイク）。無い場合は stroke フォントにフォールバックする。
 

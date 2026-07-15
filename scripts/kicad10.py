@@ -70,7 +70,7 @@ def pcb_layers() -> str:
 \t)"""
 
 
-def pcb_setup(*, output_directory: str = "fab/") -> str:
+def pcb_setup(*, output_directory: str = "fab/gerber") -> str:
     return f"""\t(setup
 \t\t(pad_to_mask_clearance 0)
 \t\t(allow_soldermask_bridges_in_footprints no)

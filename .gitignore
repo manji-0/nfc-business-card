@@ -6,10 +6,21 @@ _autosave-*
 *.lck
 *.kicad_prl
 
-# OS
-.DS_Store
+# Fab scratch / duplicate exports (keep zip, csv, previews)
+fab/*.gbr
+fab/*.gbo
+fab/*.gto
+fab/*.gbrjob
+fab/gerber-kicad-test/
+fab/gerber-kicad-test2/
+fab/nfc-business-card-gerbers/
+fab/test-silk.svg
+fab/preview.svg
+fab/.kicad-pos.csv
+fab/.DS_Store
 .history/
 .glb/
+.glb
 
 # Python
 __pycache__/
