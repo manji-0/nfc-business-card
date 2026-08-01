@@ -3,36 +3,36 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PIL import Image, ImageDraw, ImageFont
 
+from fonts import FontFile, font_file
 from silk_layout import (
     CONTACT_FONT_SIZE_MM,
     CONTACT_LINE_STEP_MM,
     ROLE_FONT_SIZE_MM,
     ROLES_LINE_STEP_MM,
     SILK_BITMAP_PX_PER_MM,
+    SILK_FONT_FACE,
 )
 
-FONT_ARIAL = Path("/System/Library/Fonts/Supplemental/Arial.ttf")
+SILK_FONT = font_file(SILK_FONT_FACE)
 
 
 def render_silk_text_block(
     lines: tuple[str, ...],
     *,
-    font_path: Path = FONT_ARIAL,
+    font_file: FontFile = SILK_FONT,
     font_size_mm: float,
     line_step_mm: float,
     px_per_mm: float = SILK_BITMAP_PX_PER_MM,
     pad_px: int = 1,
 ) -> Image.Image:
     """White text on transparent RGBA, rendered at px_per_mm."""
-    if not font_path.exists():
-        raise FileNotFoundError(f"Missing font {font_path}")
+    if not font_file.path.exists():
+        raise FileNotFoundError(f"Missing font {font_file.path}")
 
     font_px = max(8, int(round(font_size_mm * px_per_mm)))
-    font = ImageFont.truetype(str(font_path), font_px)
+    font = ImageFont.truetype(str(font_file.path), font_px, index=font_file.index)
 
     metrics: list[tuple[int, int, int, int]] = []
     for line in lines:

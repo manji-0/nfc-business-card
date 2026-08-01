@@ -3,15 +3,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+from fonts import FontFile, font_file
 from jlcpcb_limits import JLC_MIN_MASK_BRIDGE_MM
 from kicad10 import gr_poly_copper
-from silk_layout import NAME_CAP_HEIGHT_MM, NAME_DILATE_K
+from silk_layout import NAME_CAP_HEIGHT_MM, NAME_DILATE_K, NAME_FONT_FACE
 
-FONT_PATH = Path("/System/Library/Fonts/Supplemental/Georgia Bold.ttf")
+NAME_FONT = font_file(NAME_FONT_FACE)
 RENDER_PX_PER_MM = 64.0
 MIN_MASK_DAM_MM = JLC_MIN_MASK_BRIDGE_MM
 
@@ -102,14 +101,14 @@ def name_copper_rects_mm(
     origin_y_mm: float,
     cap_height_mm: float = NAME_CAP_HEIGHT_MM,
     dilate_k: int = NAME_DILATE_K,
-    font_path: Path = FONT_PATH,
+    font_file: FontFile = NAME_FONT,
 ) -> list[tuple[float, float, float, float]]:
     """Return axis-aligned copper rectangles in mm: (x0, y0, x1, y1)."""
-    if not font_path.exists():
-        raise FileNotFoundError(f"Missing font {font_path}")
+    if not font_file.path.exists():
+        raise FileNotFoundError(f"Missing font {font_file.path}")
 
     font_px = max(8, int(cap_height_mm * RENDER_PX_PER_MM * 0.92))
-    font = ImageFont.truetype(str(font_path), font_px)
+    font = ImageFont.truetype(str(font_file.path), font_px, index=font_file.index)
     bbox = font.getbbox(text)
     pad = max(2, int(0.25 * RENDER_PX_PER_MM))
     w = bbox[2] - bbox[0] + 2 * pad

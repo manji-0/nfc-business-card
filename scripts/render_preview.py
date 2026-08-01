@@ -29,11 +29,13 @@ from generate_kicad_project import (  # noqa: E402
 )
 from jlcpcb_limits import XQFN_PAD_EDGE_MM, XQFN_PAD_ROW_MM  # noqa: E402
 from card_copy import CONTACTS, NAME, QR_URL, ROLES  # noqa: E402
+from fonts import FontFile, font_file  # noqa: E402
 from silk_layout import (  # noqa: E402
     CONTACT_FONT_SIZE_MM,
     CONTACT_LINE_STEP_MM,
     CONTACT_X_MM,
     NAME_CAP_HEIGHT_MM,
+    NAME_FONT_FACE,
     NAME_Y_MM,
     NFC_LOGO_SIZE_MM,
     QR_X_MM,
@@ -41,6 +43,7 @@ from silk_layout import (  # noqa: E402
     ROLES_LINE_STEP_MM,
     ROLES_Y0_MM,
     SILK_BITMAP_PX_PER_MM,
+    SILK_FONT_FACE,
     TEXT_LEFT_MM,
     back_logo_grid,
     contact_top_y_mm,
@@ -73,17 +76,13 @@ PAD_ENIG = (200, 165, 50)
 SHADOW = (0, 0, 0)
 BG = (228, 226, 222)
 
-FONT_DIR = Path("/System/Library/Fonts/Supplemental")
-FONT_SYS = Path("/System/Library/Fonts")
-
-
-def font(path: Path, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(path), size)
+def font(file: FontFile, size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(str(file.path), size, index=file.index)
 
 
 def fonts():
-    name = font(FONT_DIR / "Georgia Bold.ttf", int(NAME_CAP_HEIGHT_MM * PPM))
-    tiny = font(FONT_DIR / "Arial.ttf", int(1.0 * PPM))
+    name = font(font_file(NAME_FONT_FACE), int(NAME_CAP_HEIGHT_MM * PPM))
+    tiny = font(font_file(SILK_FONT_FACE), int(1.0 * PPM))
     return name, tiny
 
 
@@ -207,7 +206,7 @@ def draw_xqfn(card: Image.Image, u1, ox=0, oy=0) -> None:
     p1 = mm(cx - 0.45, cy - 0.45, ox, oy)
     d.ellipse((p1[0] - 2, p1[1] - 2, p1[0] + 2, p1[1] + 2), fill=(220, 60, 50, 255))
     # Laser mark
-    tiny = font(FONT_DIR / "Arial.ttf", max(8, int(0.55 * PPM)))
+    tiny = font(font_file(SILK_FONT_FACE), max(8, int(0.55 * PPM)))
     d.text(mm(cx, cy + 0.15, ox, oy), "211", font=tiny, fill=PKG_MARK + (200,), anchor="mm")
 
 
@@ -367,7 +366,7 @@ def main() -> None:
 
     # Labels
     d = ImageDraw.Draw(canvas)
-    label_f = font(FONT_DIR / "Arial.ttf", int(2.0 * PPM))
+    label_f = font(font_file(SILK_FONT_FACE), int(2.0 * PPM))
     d.text((margin, margin // 2), "Front (component / silk side)", font=label_f, fill=(80, 80, 80, 255))
     d.text(
         (margin, margin + label_h + front.height + gap // 2),

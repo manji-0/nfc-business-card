@@ -34,10 +34,10 @@ JLCPCB 下限は `scripts/jlcpcb_limits.py` を参照。設計値は JLC 最小�
 
 | 要素 | レイヤ | フォント / 素材 | 配置 |
 |------|--------|-----------------|------|
-| 氏名 | **F.Cu + F.Mask**（ENIG） | Georgia Bold、cap 高さ 5.2 mm | 左上、`TEXT_LEFT_MM=5` |
-| 肩書き 2 行 | F.SilkS（PNG） | Arial 1.6 mm | 氏名の下、`ROLES_Y0_MM=18.5` |
+| 氏名 | **F.Cu + F.Mask**（ENIG） | Baskerville SemiBold、cap 高さ 5.5 mm | 左上、`TEXT_LEFT_MM=5` |
+| 肩書き 2 行 | F.SilkS（PNG） | Helvetica Neue 1.8 mm | 氏名の下、`ROLES_Y0_MM=18.5` |
 | QR | F.SilkS（PNG） | 白モジュール | 左列、連絡先ブロックと縦中央揃え |
-| 連絡先 4 行 | F.SilkS（PNG） | Arial 1.5 mm | `CONTACT_X_MM=16.5` |
+| 連絡先 4 行 | F.SilkS（PNG） | Helvetica Neue 1.7 mm | `CONTACT_X_MM=16.5` |
 | NFC ロゴ | F.SilkS（PNG） | N マーク | アンテナ中心 |
 
 **縦方向の並び（上→下）**: 氏名 → 肩書き → QR＋連絡先。氏名下端と肩書き上端の隙間は **≥ 1.8 mm**（`check_layout.py` で検証）。
@@ -85,6 +85,7 @@ JLCPCB 下限は `scripts/jlcpcb_limits.py` を参照。設計値は JLC 最小�
 |----------|------------------|
 | 文言 | `scripts/card_copy.py` |
 | 寸法・余白・フォントサイズ | `scripts/silk_layout.py` |
+| フォント（face 名 → TTF パス） | `scripts/fonts.py`（face 名は `silk_layout.py` の `NAME_FONT_FACE` / `SILK_FONT_FACE`） |
 | JLC 最小/feature | `scripts/jlcpcb_limits.py` |
 | アンテナターン数・配線 | `scripts/generate_kicad_project.py`（`nfc_layout()`） |
 

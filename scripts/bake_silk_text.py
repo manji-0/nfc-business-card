@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from bake_kicad_text import bake_line_block_sexpr
 from card_copy import CONTACTS, ROLES
-from layout_metrics import ARIAL, block_max_ink_width_mm
+from layout_metrics import SILK_FONT, block_max_ink_width_mm
 from silk_layout import (
     CONTACT_FONT_SIZE_MM,
     CONTACT_LINE_STEP_MM,
@@ -35,7 +35,7 @@ def build_roles_silk_sexpr() -> str:
             ROLES,
             origin_x_mm=TEXT_LEFT_MM,
             font_size_mm=ROLE_FONT_SIZE_MM,
-            font_path=ARIAL,
+            font_file=SILK_FONT,
         ),
     )
 
@@ -55,6 +55,6 @@ def build_contacts_silk_sexpr() -> str:
             CONTACTS,
             origin_x_mm=CONTACT_X_MM,
             font_size_mm=CONTACT_FONT_SIZE_MM,
-            font_path=ARIAL,
+            font_file=SILK_FONT,
         ),
     )

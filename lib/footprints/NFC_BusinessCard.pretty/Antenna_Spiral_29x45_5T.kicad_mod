@@ -12,6 +12,6 @@
 	(fp_text value "Antenna" (at 0 0) (layer "F.Fab") (hide yes)
 		(effects (font (size 1 1) (thickness 0.15)))
 	)
-	(pad "1" connect circle (at -12.3000 -19.7500) (size 0.45 0.45) (layers "F.Cu") (uuid c6859eba-cefb-4a86-9120-1d665321b2f9))
-	(pad "2" connect circle (at -11.0000 -19.7500) (size 0.45 0.45) (layers "F.Cu") (uuid fbcf79a0-3ca9-4b84-92f8-4b72b9068317))
+	(pad "1" connect circle (at -12.3000 -19.7500) (size 0.45 0.45) (layers "F.Cu") (uuid 7419fb86-e868-4e86-95ed-ac15fa1a07d4))
+	(pad "2" connect circle (at -11.0000 -19.7500) (size 0.45 0.45) (layers "F.Cu") (uuid 098193df-a825-492b-93f1-a4e128d492bb))
 )

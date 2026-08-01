@@ -12,5 +12,5 @@
 		(effects (font (size 0.5 0.5) (thickness 0.08)))
 	)
 	(fp_rect (start -0.42500000000000004 -0.35) (end 0.42500000000000004 0.35) (layer "F.CrtYd") (stroke (width 0.05) (type solid)) (fill none))
-	(pad "1" smd roundrect (at 0 0) (size 0.55 0.4) (layers "F.Cu" "F.Mask") (roundrect_rratio 0.2) (uuid 163f115f-28bb-4365-a243-1695fae1d55b))
+	(pad "1" smd roundrect (at 0 0) (size 0.55 0.4) (layers "F.Cu" "F.Mask") (roundrect_rratio 0.2) (uuid 0f94c49a-28d4-463c-b065-59f2f9084454))
 )
