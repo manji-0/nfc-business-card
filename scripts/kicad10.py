@@ -216,14 +216,34 @@ def fp_pad_roundrect(
 \t\t)"""
 
 
-def fp_pad_circle(num: str, x: float, y: float, *, net: str | None = None, size: float = 0.45) -> str:
+def fp_pad_circle(
+    num: str,
+    x: float,
+    y: float,
+    *,
+    net: str | None = None,
+    size: float = 0.45,
+    pad_type: str = "smd",
+    layers: str = '"F.Cu" "F.Mask"',
+) -> str:
     net_line = f'\n\t\t\t(net "{net}")' if net else ""
-    return f"""\t\t(pad "{num}" smd circle
+    return f"""\t\t(pad "{num}" {pad_type} circle
 \t\t\t(at {fmt_xy(x, y)})
 \t\t\t(size {size} {size})
-\t\t\t(layers "F.Cu" "F.Mask"){net_line}
+\t\t\t(layers {layers}){net_line}
 \t\t\t(uuid {quuid()})
 \t\t)"""
+
+
+def via(x: float, y: float, net: str, *, size: float = 0.6, drill: float = 0.3) -> str:
+    return f"""\t(via
+\t\t(at {fmt_xy(x, y)})
+\t\t(size {size})
+\t\t(drill {drill})
+\t\t(layers "F.Cu" "B.Cu")
+\t\t(net "{net}")
+\t\t(uuid {quuid()})
+\t)"""
 
 
 def segment(x0: float, y0: float, x1: float, y1: float, net: str, *, width: float = 0.3, layer: str = "F.Cu") -> str:

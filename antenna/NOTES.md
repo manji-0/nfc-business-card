@@ -40,10 +40,14 @@ Rough L ≈ **1.9 µH** → f_res ≈ **16 MHz** with Cin=50 pF alone. First-art
 ## Layout rules
 
 1. Keep ≥ 3 mm clearance from Edge.Cuts to outer turn.
-2. Do not place ground pour under the spiral.
+2. Do not place ground **pour** under the spiral. A single thin B.Cu underpass for LB
+   (inner end → component strip) is required so F.Cu feed does not cross the outer turn;
+   keep it ≤ feed trace width and well clear of any GND island.
 3. Place U1 and C1 pads at the feed gap; short LA/LB traces.
 4. VSS has a tiny local copper island left of U1 in the component strip — do not flood the antenna area.
 5. Center EP of XQFN-8: **no solder paste / no net** (datasheet).
+6. Antenna footprint is a **net-tie** (`net_tie_pad_groups "1,2"`): spiral copper intentionally bridges LA↔LB.
+   DRC must stay clean without excluding real shorts elsewhere (e.g. feed through FD).
 
 ## Verification after PCBA
 

@@ -71,10 +71,10 @@ ant1 = (lay["ant_cx"] + pts[0][0], lay["ant_cy"] + pts[0][1])
 ant2 = (lay["ant_cx"] + pts[-1][0], lay["ant_cy"] + pts[-1][1])
 routes = feed_routes(ant1, ant2, lay["u1"], lay["c1"])
 for i, a in enumerate(routes):
-    x0, y0, x1, y1, net_a, _w = a
+    x0, y0, x1, y1, net_a, _w, layer_a = a
     for j, b in enumerate(routes[i + 1 :], start=i + 1):
-        x2, y2, x3, y3, net_b, _w2 = b
-        if net_a == net_b:
+        x2, y2, x3, y3, net_b, _w2, layer_b = b
+        if net_a == net_b or layer_a != layer_b:
             continue
         # axis-aligned overlap on shared horizontal or vertical span
         if abs(y0 - y1) < 1e-6 and abs(y2 - y3) < 1e-6 and abs(y0 - y2) < 1e-6:
@@ -89,6 +89,23 @@ for i, a in enumerate(routes):
                 errors.append(f"LA/LB overlap on x={x0:.2f}: seg {i} vs {j}")
 
 print(f"OK: feed routes {len(routes)} segs, no LA/LB overlap")
+
+# F.Cu LB must not cross the antenna left edge (historical short through outer turn)
+ant_left = lay["ant_x0"]
+lb_cross = False
+for x0, y0, x1, y1, net, w, layer in routes:
+    if net != "LB" or layer != "F.Cu":
+        continue
+    if abs(y0 - y1) < 1e-9:  # horizontal
+        lo, hi = sorted((x0, x1))
+        if lo < ant_left < hi:
+            errors.append(f"LB F.Cu crosses antenna left edge at y={y0:.2f}")
+            lb_cross = True
+    if abs(x0 - x1) < 1e-9 and abs(x0 - ant_left) < (TRACE_W + w) / 2:
+        errors.append(f"LB F.Cu runs on antenna left edge at x={x0:.2f}")
+        lb_cross = True
+if not lb_cross:
+    print("OK: LB F.Cu stays clear of antenna left edge (B.Cu underpass)")
 
 la_bus = u1[0] - FEED_BUS_HALF_PITCH_MM
 lb_bus = u1[0] + FEED_BUS_HALF_PITCH_MM
@@ -156,7 +173,9 @@ def seg_hits_rect(
 
 for num, (px, py, rot, pad_net) in xqfn_pads.items():
     rect = pad_bbox(u1_x + px, u1_y + py, rot)
-    for x0, y0, x1, y1, net, w in routes:
+    for x0, y0, x1, y1, net, w, layer in routes:
+        if layer != "F.Cu":
+            continue
         if pad_net != "NC" and net == pad_net:
             continue  # intentional connection to LA/LB/GND pads
         if seg_hits_rect(x0, y0, x1, y1, w, rect):

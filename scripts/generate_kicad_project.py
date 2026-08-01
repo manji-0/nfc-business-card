@@ -41,6 +41,7 @@ from kicad10 import (
     pcb_setup,
     quuid,
     segment,
+    via,
 )
 from kicad_bitmap import bitmap_sexpr, bitmap_sexpr_rgba
 from silk_layout import (
@@ -111,11 +112,12 @@ def feed_routes(
     ant2_abs: tuple[float, float],
     u1: tuple[float, float],
     c1: tuple[float, float],
-) -> list[tuple[float, float, float, float, str, float]]:
-    """Return feed polylines as (x0, y0, x1, y1, net, width_mm).
+) -> list[tuple[float, float, float, float, str, float, str]]:
+    """Return feed polylines as (x0, y0, x1, y1, net, width_mm, layer).
 
     LA skirts left of U1 (bypass) so the vertical bus never crosses FD (pad 4).
-    LB stays on the pad-8 bus — ant2 is above the chip top, so it does not hit SDA.
+    LB uses a thin B.Cu underpass from the inner spiral end into the component strip —
+    an F.Cu path at ant2_y would cross the outer left turn (x≈ant_x0).
     """
     u1_x, u1_y = u1
     c1_x, c1_y = c1
@@ -126,32 +128,53 @@ def feed_routes(
     c1_la = (c1_x - 0.48, c1_y)
     c1_lb = (c1_x + 0.48, c1_y)
     w = FEED_TRACE_W
+    # Inner via: step into spiral hollow; outer via: component strip east of U1
+    via_in = (ant2_abs[0] + 1.3, ant2_abs[1] + 0.75)
+    via_out = (u1_x + 2.0, pad_y)
     return [
         # LA antenna → skirt left of chip → enter pad 1 from the left
-        (ant1_abs[0], ant1_abs[1], la_bypass_x, ant1_abs[1], "LA", w),
-        (la_bypass_x, ant1_abs[1], la_bypass_x, pad_y, "LA", w),
-        (la_bypass_x, pad_y, la_x, pad_y, "LA", w),
+        (ant1_abs[0], ant1_abs[1], la_bypass_x, ant1_abs[1], "LA", w, "F.Cu"),
+        (la_bypass_x, ant1_abs[1], la_bypass_x, pad_y, "LA", w, "F.Cu"),
+        (la_bypass_x, pad_y, la_x, pad_y, "LA", w, "F.Cu"),
         # LA from C1 (above chip — la_x vertical is clear of FD)
-        (c1_la[0], c1_la[1], la_x, c1_la[1], "LA", w),
-        (la_x, c1_la[1], la_x, pad_y, "LA", w),
-        # LB antenna → pad 8 (short stub above chip)
-        (ant2_abs[0], ant2_abs[1], lb_x, ant2_abs[1], "LB", w),
-        (lb_x, ant2_abs[1], lb_x, pad_y, "LB", w),
-        (c1_lb[0], c1_lb[1], lb_x, c1_lb[1], "LB", w),
-        (lb_x, c1_lb[1], lb_x, pad_y, "LB", w),
+        (c1_la[0], c1_la[1], la_x, c1_la[1], "LA", w, "F.Cu"),
+        (la_x, c1_la[1], la_x, pad_y, "LA", w, "F.Cu"),
+        # LB: F.Cu stub into hollow → B.Cu underpass → F.Cu to pad 8
+        (ant2_abs[0], ant2_abs[1], via_in[0], ant2_abs[1], "LB", w, "F.Cu"),
+        (via_in[0], ant2_abs[1], via_in[0], via_in[1], "LB", w, "F.Cu"),
+        (via_in[0], via_in[1], via_out[0], via_in[1], "LB", w, "B.Cu"),
+        (via_out[0], via_in[1], via_out[0], via_out[1], "LB", w, "B.Cu"),
+        (via_out[0], via_out[1], lb_x, pad_y, "LB", w, "F.Cu"),
+        # LB from C1
+        (c1_lb[0], c1_lb[1], lb_x, c1_lb[1], "LB", w, "F.Cu"),
+        (lb_x, c1_lb[1], lb_x, pad_y, "LB", w, "F.Cu"),
     ]
 
 
-def gnd_island_route(u1: tuple[float, float]) -> list[tuple[float, float, float, float, str, float]]:
+def feed_vias(
+    ant2_abs: tuple[float, float],
+    u1: tuple[float, float],
+) -> list[tuple[float, float, str]]:
+    """Vias for the LB underpass (inner hollow + component strip)."""
+    u1_x, u1_y = u1
+    pad_y = u1_y + 0.75
+    via_in = (ant2_abs[0] + 1.3, ant2_abs[1] + 0.75)
+    via_out = (u1_x + 2.0, pad_y)
+    return [(via_in[0], via_in[1], "LB"), (via_out[0], via_out[1], "LB")]
+
+
+def gnd_island_route(u1: tuple[float, float]) -> list[tuple[float, float, float, float, str, float, str]]:
     """Short stub from VSS (pad 2) to a local copper island in the component strip."""
     u1_x, u1_y = u1
     vss = (u1_x - 0.75, u1_y + 0.20)
     island = (u1_x - GND_ISLAND_DX_MM, u1_y + 0.20)
-    return [(vss[0], vss[1], island[0], island[1], "GND", FEED_TRACE_W)]
+    return [(vss[0], vss[1], island[0], island[1], "GND", FEED_TRACE_W, "F.Cu")]
 
 
-def feed_routes_sexpr(routes: list[tuple[float, float, float, float, str, float]]) -> list[str]:
-    return [segment(x0, y0, x1, y1, net, width=w) for x0, y0, x1, y1, net, w in routes]
+def feed_routes_sexpr(
+    routes: list[tuple[float, float, float, float, str, float, str]],
+) -> list[str]:
+    return [segment(x0, y0, x1, y1, net, width=w, layer=layer) for x0, y0, x1, y1, net, w, layer in routes]
 
 
 def uid() -> str:
@@ -773,6 +796,7 @@ def build_u1_footprint(x: float, y: float) -> str:
 
 
 def build_ant_footprint(x: float, y: float, ant_pts: list[tuple[float, float]]) -> str:
+    """Spiral as copper graphics + pads 1/2 — declared net-tie so DRC allows LA↔LB path."""
     pad_d = ANTENNA_FEED_PAD_D_MM
     parts = [
         '\t(footprint "NFC_BusinessCard:Antenna_Spiral_29x45_5T"',
@@ -782,15 +806,34 @@ def build_ant_footprint(x: float, y: float, ant_pts: list[tuple[float, float]]) 
         footprint_property("Reference", "ANT1", 0, 0, 0, "F.SilkS", hide=True, font_size=(0.8, 0.8), thickness=0.12),
         footprint_property("Value", "Antenna_NFC", 0, 0, 0, "F.Fab", hide=True, font_size=(0.8, 0.8), thickness=0.12),
         _fp_hidden_fields(),
-        "\t\t(attr board_only exclude_from_pos_files exclude_from_bom)",
+        # net-tie: continuous spiral intentionally bridges LA (pad 1) and LB (pad 2)
+        '\t\t(attr board_only exclude_from_pos_files exclude_from_bom allow_missing_courtyard)',
+        '\t\t(net_tie_pad_groups "1,2")',
         "\t\t(duplicate_pad_numbers_are_jumpers no)",
     ]
     for a, b in zip(ant_pts, ant_pts[1:]):
         parts.append(fp_line(a[0], a[1], b[0], b[1], "F.Cu", width=TRACE_W))
     parts.extend(
         [
-            fp_pad_circle("1", ant_pts[0][0], ant_pts[0][1], net="LA", size=pad_d),
-            fp_pad_circle("2", ant_pts[-1][0], ant_pts[-1][1], net="LB", size=pad_d),
+            # connect pads: copper-only net-tie lands (matches RF_Antenna library practice)
+            fp_pad_circle(
+                "1",
+                ant_pts[0][0],
+                ant_pts[0][1],
+                net="LA",
+                size=pad_d,
+                pad_type="connect",
+                layers='"F.Cu"',
+            ),
+            fp_pad_circle(
+                "2",
+                ant_pts[-1][0],
+                ant_pts[-1][1],
+                net="LB",
+                size=pad_d,
+                pad_type="connect",
+                layers='"F.Cu"',
+            ),
             "\t\t(embedded_fonts no)",
             "\t)",
         ]
@@ -899,6 +942,7 @@ def write_pcb() -> None:
     segments = feed_routes_sexpr(
         feed_routes(ant1_abs, ant2_abs, lay["u1"], lay["c1"]) + gnd_island_route(lay["u1"])
     )
+    vias = [via(x, y, net) for x, y, net in feed_vias(ant2_abs, lay["u1"])]
 
     content = "\n".join(
         [
@@ -922,6 +966,7 @@ def write_pcb() -> None:
             gr_text("TEXT ZONE (no copper)", tw / 2, 4, "Dwgs.User"),
             gr_text("NFC", ant_cx, 4, "Dwgs.User"),
             *segments,
+            *vias,
             "\t(embedded_fonts yes)",
             ")",
         ]
@@ -940,9 +985,10 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
         f'\t(version {PCB_FORMAT_VERSION})',
         '\t(generator "nfc_business_card")',
         '\t(layer "F.Cu")',
-        f'\t(descr "Rect spiral NFC antenna ~{outer_w:.0f}x{outer_h:.0f}mm {TURNS} turns {TRACE_W}/{GAP}")',
-        '\t(tags "nfc antenna spiral")',
-        '\t(attr exclude_from_pos_files exclude_from_bom)',
+        f'\t(descr "Rect spiral NFC antenna ~{outer_w:.0f}x{outer_h:.0f}mm {TURNS} turns {TRACE_W}/{GAP}; net-tie pads 1-2")',
+        '\t(tags "net tie nfc antenna spiral")',
+        '\t(attr exclude_from_pos_files exclude_from_bom allow_missing_courtyard)',
+        '\t(net_tie_pad_groups "1,2")',
         '\t(fp_text reference "ANT**" (at 0 0) (layer "F.SilkS") (hide yes)',
         '\t\t(effects (font (size 1 1) (thickness 0.15)))',
         "\t)",
@@ -956,12 +1002,12 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
             f'(layer "F.Cu") (stroke (width {TRACE_W}) (type solid)))'
         )
     lines.append(
-        f'\t(pad "1" smd circle (at {p1[0]:.4f} {p1[1]:.4f}) (size {pad_d} {pad_d}) '
-        f'(layers "F.Cu" "F.Mask") (uuid {uid()}))'
+        f'\t(pad "1" connect circle (at {p1[0]:.4f} {p1[1]:.4f}) (size {pad_d} {pad_d}) '
+        f'(layers "F.Cu") (uuid {uid()}))'
     )
     lines.append(
-        f'\t(pad "2" smd circle (at {p2[0]:.4f} {p2[1]:.4f}) (size {pad_d} {pad_d}) '
-        f'(layers "F.Cu" "F.Mask") (uuid {uid()}))'
+        f'\t(pad "2" connect circle (at {p2[0]:.4f} {p2[1]:.4f}) (size {pad_d} {pad_d}) '
+        f'(layers "F.Cu") (uuid {uid()}))'
     )
     lines.append(")")
     pretty = LIB / "footprints" / "NFC_BusinessCard.pretty"

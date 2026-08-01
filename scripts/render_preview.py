@@ -331,7 +331,8 @@ def build_geometry():
     ant1, ant2 = ant_abs[0], ant_abs[-1]
     feed_segs = [
         ((x0, y0), (x1, y1))
-        for x0, y0, x1, y1, _net, _w in feed_routes(ant1, ant2, lay["u1"], lay["c1"])
+        for x0, y0, x1, y1, _net, _w, layer in feed_routes(ant1, ant2, lay["u1"], lay["c1"])
+        if layer == "F.Cu"
     ]
     return lay, ant_segs, feed_segs
 
