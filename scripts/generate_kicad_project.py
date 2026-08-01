@@ -10,11 +10,15 @@ from pathlib import Path
 from card_copy import NAME
 from jlcpcb_limits import (
     ANT_INSET_MM,
+    ANTENNA_FEED_PAD_D_MM,
     ANTENNA_GAP_MM,
     ANTENNA_TRACE_W_MM,
-    DESIGN_TRACE_CLEARANCE_MM,
     FEED_BUS_HALF_PITCH_MM,
+    FEED_LA_BYPASS_DX_MM,
     FEED_TRACE_W_MM,
+    GND_ISLAND_DX_MM,
+    GND_ISLAND_H_MM,
+    GND_ISLAND_W_MM,
     XQFN_PAD_EDGE_MM,
     XQFN_PAD_ROW_MM,
 )
@@ -68,7 +72,7 @@ ANT_INSET = ANT_INSET_MM
 COMP_STRIP_W = 7.0  # U1 + C1 between text and antenna
 TRACE_W = ANTENNA_TRACE_W_MM
 GAP = ANTENNA_GAP_MM
-TURNS = 5  # ~2.0–2.2 µH → nominal resonance ~14–14.5 MHz with 50 pF + parasitics
+TURNS = 5  # ~1.9–2.1 µH → ~15–16 MHz with 50 pF alone; C1 DNP for first-article trim
 FEED_TRACE_W = FEED_TRACE_W_MM
 # Stable root schematic UUID — reused in .kicad_pro sheets and symbol instance paths.
 SCHEMATIC_ROOT_UUID = "db0e1d12-1252-490b-9c29-4e9a9001ab69"
@@ -108,25 +112,42 @@ def feed_routes(
     u1: tuple[float, float],
     c1: tuple[float, float],
 ) -> list[tuple[float, float, float, float, str, float]]:
-    """Return feed polylines as (x0, y0, x1, y1, net, width_mm). LA/LB use separate buses."""
+    """Return feed polylines as (x0, y0, x1, y1, net, width_mm).
+
+    LA skirts left of U1 (bypass) so the vertical bus never crosses FD (pad 4).
+    LB stays on the pad-8 bus — ant2 is above the chip top, so it does not hit SDA.
+    """
     u1_x, u1_y = u1
     c1_x, c1_y = c1
     la_x = u1_x - FEED_BUS_HALF_PITCH_MM
     lb_x = u1_x + FEED_BUS_HALF_PITCH_MM
     pad_y = u1_y + 0.75
+    la_bypass_x = u1_x - FEED_LA_BYPASS_DX_MM
     c1_la = (c1_x - 0.48, c1_y)
     c1_lb = (c1_x + 0.48, c1_y)
-    w_main, w_fine = FEED_TRACE_W, FEED_TRACE_W
+    w = FEED_TRACE_W
     return [
-        (ant1_abs[0], ant1_abs[1], la_x, ant1_abs[1], "LA", w_main),
-        (la_x, ant1_abs[1], la_x, pad_y, "LA", w_main),
-        (c1_la[0], c1_la[1], la_x, c1_la[1], "LA", w_fine),
-        (la_x, c1_la[1], la_x, pad_y, "LA", w_fine),
-        (ant2_abs[0], ant2_abs[1], lb_x, ant2_abs[1], "LB", w_main),
-        (lb_x, ant2_abs[1], lb_x, pad_y, "LB", w_main),
-        (c1_lb[0], c1_lb[1], lb_x, c1_lb[1], "LB", w_fine),
-        (lb_x, c1_lb[1], lb_x, pad_y, "LB", w_fine),
+        # LA antenna → skirt left of chip → enter pad 1 from the left
+        (ant1_abs[0], ant1_abs[1], la_bypass_x, ant1_abs[1], "LA", w),
+        (la_bypass_x, ant1_abs[1], la_bypass_x, pad_y, "LA", w),
+        (la_bypass_x, pad_y, la_x, pad_y, "LA", w),
+        # LA from C1 (above chip — la_x vertical is clear of FD)
+        (c1_la[0], c1_la[1], la_x, c1_la[1], "LA", w),
+        (la_x, c1_la[1], la_x, pad_y, "LA", w),
+        # LB antenna → pad 8 (short stub above chip)
+        (ant2_abs[0], ant2_abs[1], lb_x, ant2_abs[1], "LB", w),
+        (lb_x, ant2_abs[1], lb_x, pad_y, "LB", w),
+        (c1_lb[0], c1_lb[1], lb_x, c1_lb[1], "LB", w),
+        (lb_x, c1_lb[1], lb_x, pad_y, "LB", w),
     ]
+
+
+def gnd_island_route(u1: tuple[float, float]) -> list[tuple[float, float, float, float, str, float]]:
+    """Short stub from VSS (pad 2) to a local copper island in the component strip."""
+    u1_x, u1_y = u1
+    vss = (u1_x - 0.75, u1_y + 0.20)
+    island = (u1_x - GND_ISLAND_DX_MM, u1_y + 0.20)
+    return [(vss[0], vss[1], island[0], island[1], "GND", FEED_TRACE_W)]
 
 
 def feed_routes_sexpr(routes: list[tuple[float, float, float, float, str, float]]) -> list[str]:
@@ -240,7 +261,7 @@ def write_symbol_lib() -> None:
 \t\t\t(at 0 -5.08 0)
 \t\t\t(effects (font (size 1.27 1.27)))
 \t\t)
-\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_84x46_4T"
+\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_29x45_5T"
 \t\t\t(at 0 0 0)
 \t\t\t(effects (font (size 1.27 1.27)) (hide yes))
 \t\t)
@@ -285,11 +306,13 @@ def write_symbol_lib() -> None:
     )
 
 
-def xqfn_pad_wh(rot_deg: float) -> tuple[float, float]:
-    """Return KiCad pad (width height) before rotation."""
-    if int(rot_deg) % 180 == 90:
-        return XQFN_PAD_EDGE_MM, XQFN_PAD_ROW_MM
-    return XQFN_PAD_ROW_MM, XQFN_PAD_EDGE_MM
+def xqfn_pad_wh(_rot_deg: float) -> tuple[float, float]:
+    """Return KiCad pad (width, height) before rotation.
+
+    Long axis toward package centre: size is always (EDGE, ROW). Top/bottom pads
+    use rot=90 so the long axis lands on Y; side pads use rot=0 (long on X).
+    """
+    return XQFN_PAD_EDGE_MM, XQFN_PAD_ROW_MM
 
 
 def write_xqfn_footprint() -> None:
@@ -414,12 +437,14 @@ def write_c0402_footprint() -> None:
 
 
 def write_project(schematic_uuid: str) -> None:
-    project_json = """{
-  "board": {
-    "design_settings": {
-      "defaults": {
+    from jlcpcb_limits import DESIGN_TRACE_CLEARANCE_MM, FEED_TRACE_W_MM
+
+    project_json = f"""{{
+  "board": {{
+    "design_settings": {{
+      "defaults": {{
         "board_outline_line_width": 0.1,
-        "copper_line_width": 0.2,
+        "copper_line_width": {FEED_TRACE_W_MM},
         "copper_text_size_h": 1.0,
         "copper_text_size_v": 1.0,
         "copper_text_thickness": 0.15,
@@ -428,27 +453,27 @@ def write_project(schematic_uuid: str) -> None:
         "silk_text_size_h": 0.8,
         "silk_text_size_v": 0.8,
         "silk_text_thickness": 0.12
-      },
-      "rules": {
-        "min_clearance": DESIGN_TRACE_CLEARANCE_MM,
-        "min_track_width": DESIGN_TRACE_CLEARANCE_MM,
+      }},
+      "rules": {{
+        "min_clearance": {DESIGN_TRACE_CLEARANCE_MM},
+        "min_track_width": {FEED_TRACE_W_MM},
         "min_via_diameter": 0.4,
         "min_through_hole_diameter": 0.2,
         "solder_mask_clearance": 0.0,
         "solder_mask_min_width": 0.0
-      }
-    }
-  },
-  "meta": {
+      }}
+    }}
+  }},
+  "meta": {{
     "filename": "nfc-business-card.kicad_pro",
     "version": 1
-  },
+  }},
   "sheets": [
-    ["__SCHEMATIC_UUID__", "Root"]
+    ["{schematic_uuid}", "Root"]
   ],
-  "text_variables": {}
-}
-""".replace("__SCHEMATIC_UUID__", schematic_uuid)
+  "text_variables": {{}}
+}}
+"""
     (ROOT / "nfc-business-card.kicad_pro").write_text(project_json, encoding="utf-8")
 
 
@@ -502,7 +527,7 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t\t(on_board yes)
 \t\t\t(property "Reference" "ANT" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
 \t\t\t(property "Value" "Antenna_NFC" (at 0 -5.08 0) (effects (font (size 1.27 1.27))))
-\t\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_84x46_4T" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_29x45_5T" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
 \t\t\t(symbol "Antenna_NFC_0_1"
 \t\t\t\t(arc (start -2.54 0) (mid 0 2.54) (end 2.54 0) (stroke (width 0) (type default)) (fill (type none)))
 \t\t\t)
@@ -582,7 +607,7 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t(uuid {uid()})
 \t\t(property "Reference" "ANT1" (at 88.9 71.12 0) (effects (font (size 1.27 1.27))))
 \t\t(property "Value" "Antenna_NFC" (at 88.9 86.36 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_84x46_4T" (at 88.9 78.74 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_29x45_5T" (at 88.9 78.74 0) (effects (font (size 1.27 1.27)) (hide yes)))
 \t\t(pin "1" (uuid {uid()}))
 \t\t(pin "2" (uuid {uid()}))
 \t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "ANT1") (unit 1))))
@@ -725,7 +750,7 @@ def build_u1_footprint(x: float, y: float) -> str:
         f"\t\t(uuid {quuid()})",
         f"\t\t(at {x} {y})",
         footprint_property("Reference", "U1", 0, -2.2, 0, "F.SilkS", hide=True, font_size=(0.7, 0.7), thickness=0.1),
-        footprint_property("Value", "NT3H2111", 0, 2.2, 0, "F.Fab", font_size=(0.5, 0.5), thickness=0.08),
+        footprint_property("Value", "NT3H2111W0FHKH", 0, 2.2, 0, "F.Fab", font_size=(0.5, 0.5), thickness=0.08),
         _fp_hidden_fields(),
         footprint_property("LCSC Part #", "C710403", 0, 0, 0, "F.Fab", hide=True, thickness=0.15),
         "\t\t(attr smd)",
@@ -748,8 +773,9 @@ def build_u1_footprint(x: float, y: float) -> str:
 
 
 def build_ant_footprint(x: float, y: float, ant_pts: list[tuple[float, float]]) -> str:
+    pad_d = ANTENNA_FEED_PAD_D_MM
     parts = [
-        '\t(footprint "NFC_BusinessCard:Antenna_Spiral_84x46_4T"',
+        '\t(footprint "NFC_BusinessCard:Antenna_Spiral_29x45_5T"',
         '\t\t(layer "F.Cu")',
         f"\t\t(uuid {quuid()})",
         f"\t\t(at {x} {y})",
@@ -763,13 +789,70 @@ def build_ant_footprint(x: float, y: float, ant_pts: list[tuple[float, float]]) 
         parts.append(fp_line(a[0], a[1], b[0], b[1], "F.Cu", width=TRACE_W))
     parts.extend(
         [
-            fp_pad_circle("1", ant_pts[0][0], ant_pts[0][1], net="LA"),
-            fp_pad_circle("2", ant_pts[-1][0], ant_pts[-1][1], net="LB"),
+            fp_pad_circle("1", ant_pts[0][0], ant_pts[0][1], net="LA", size=pad_d),
+            fp_pad_circle("2", ant_pts[-1][0], ant_pts[-1][1], net="LB", size=pad_d),
             "\t\t(embedded_fonts no)",
             "\t)",
         ]
     )
     return "\n".join(parts) + "\n"
+
+
+def build_gnd_island(u1: tuple[float, float]) -> str:
+    """Local VSS copper island in the component strip (not under the spiral)."""
+    u1_x, u1_y = u1
+    x = u1_x - GND_ISLAND_DX_MM
+    y = u1_y + 0.20
+    w, h = GND_ISLAND_W_MM, GND_ISLAND_H_MM
+    parts = [
+        '\t(footprint "NFC_BusinessCard:GND_Island"',
+        '\t\t(layer "F.Cu")',
+        f"\t\t(uuid {quuid()})",
+        f"\t\t(at {x} {y})",
+        footprint_property("Reference", "GND1", 0, -1.0, 0, "F.SilkS", hide=True, font_size=(0.5, 0.5), thickness=0.08),
+        footprint_property("Value", "GND", 0, 1.0, 0, "F.Fab", hide=True, font_size=(0.5, 0.5), thickness=0.08),
+        _fp_hidden_fields(),
+        "\t\t(attr board_only exclude_from_pos_files exclude_from_bom)",
+        "\t\t(duplicate_pad_numbers_are_jumpers no)",
+        fp_rect(-w / 2 - 0.15, -h / 2 - 0.15, w / 2 + 0.15, h / 2 + 0.15, "F.CrtYd", width=0.05),
+        # Copper + mask only (no paste — local reference island, not a soldered land)
+        f'\t\t(pad "1" smd roundrect\n'
+        f'\t\t\t(at 0 0)\n'
+        f'\t\t\t(size {w} {h})\n'
+        f'\t\t\t(layers "F.Cu" "F.Mask")\n'
+        f'\t\t\t(roundrect_rratio 0.2)\n'
+        f'\t\t\t(net "GND")\n'
+        f'\t\t\t(uuid {quuid()})\n'
+        f'\t\t)',
+        "\t\t(embedded_fonts no)",
+        "\t)",
+    ]
+    return "\n".join(parts) + "\n"
+
+
+def write_gnd_island_footprint() -> None:
+    w, h = GND_ISLAND_W_MM, GND_ISLAND_H_MM
+    path = LIB / "footprints" / "NFC_BusinessCard.pretty" / "GND_Island.kicad_mod"
+    path.write_text(
+        f"""(footprint "GND_Island"
+\t(version {PCB_FORMAT_VERSION})
+\t(generator "nfc_business_card")
+\t(layer "F.Cu")
+\t(descr "Local VSS copper island for NT3H2111 (component strip only)")
+\t(tags "gnd vss nfc")
+\t(attr board_only exclude_from_pos_files exclude_from_bom)
+\t(fp_text reference "GND**" (at 0 -1.0) (layer "F.SilkS") (hide yes)
+\t\t(effects (font (size 0.5 0.5) (thickness 0.08)))
+\t)
+\t(fp_text value "GND" (at 0 1.0) (layer "F.Fab") (hide yes)
+\t\t(effects (font (size 0.5 0.5) (thickness 0.08)))
+\t)
+\t(fp_rect (start {-w / 2 - 0.15} {-h / 2 - 0.15}) (end {w / 2 + 0.15} {h / 2 + 0.15}) (layer "F.CrtYd") (stroke (width 0.05) (type solid)) (fill none))
+\t(pad "1" smd roundrect (at 0 0) (size {w} {h}) (layers "F.Cu" "F.Mask") (roundrect_rratio 0.2) (uuid {uid()}))
+)
+""",
+        encoding="utf-8",
+    )
 
 
 def build_c1_footprint(x: float, y: float) -> str:
@@ -813,7 +896,9 @@ def write_pcb() -> None:
         size_mm=NAME_CAP_HEIGHT_MM,
         face=NAME_FONT_FACE,
     )
-    segments = feed_routes_sexpr(feed_routes(ant1_abs, ant2_abs, lay["u1"], lay["c1"]))
+    segments = feed_routes_sexpr(
+        feed_routes(ant1_abs, ant2_abs, lay["u1"], lay["c1"]) + gnd_island_route(lay["u1"])
+    )
 
     content = "\n".join(
         [
@@ -828,6 +913,7 @@ def write_pcb() -> None:
             build_u1_footprint(u1_x, u1_y),
             build_ant_footprint(ant_cx, ant_cy, ant_pts),
             build_c1_footprint(c1_x, c1_y),
+            build_gnd_island(lay["u1"]),
             name_copper.rstrip("\n"),
             gr_line(tw, 0, tw, BOARD_H, "Dwgs.User", dash=True),
             gr_line(lay["ant_x0"], 0, lay["ant_x0"], BOARD_H, "Dwgs.User", dash=True),
@@ -847,8 +933,10 @@ def write_pcb() -> None:
 def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
     pts = rectangular_spiral(0, 0, outer_w, outer_h, TURNS, TRACE_W, GAP)
     p1, p2 = pts[0], pts[-1]
+    pad_d = ANTENNA_FEED_PAD_D_MM
+    fp_name = f"Antenna_Spiral_{outer_w:.0f}x{outer_h:.0f}_{TURNS}T"
     lines = [
-        '(footprint "Antenna_Spiral_84x46_4T"',
+        f'(footprint "{fp_name}"',
         f'\t(version {PCB_FORMAT_VERSION})',
         '\t(generator "nfc_business_card")',
         '\t(layer "F.Cu")',
@@ -868,16 +956,21 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
             f'(layer "F.Cu") (stroke (width {TRACE_W}) (type solid)))'
         )
     lines.append(
-        f'\t(pad "1" smd circle (at {p1[0]:.4f} {p1[1]:.4f}) (size 0.6 0.6) '
+        f'\t(pad "1" smd circle (at {p1[0]:.4f} {p1[1]:.4f}) (size {pad_d} {pad_d}) '
         f'(layers "F.Cu" "F.Mask") (uuid {uid()}))'
     )
     lines.append(
-        f'\t(pad "2" smd circle (at {p2[0]:.4f} {p2[1]:.4f}) (size 0.6 0.6) '
+        f'\t(pad "2" smd circle (at {p2[0]:.4f} {p2[1]:.4f}) (size {pad_d} {pad_d}) '
         f'(layers "F.Cu" "F.Mask") (uuid {uid()}))'
     )
     lines.append(")")
-    path = LIB / "footprints" / "NFC_BusinessCard.pretty" / "Antenna_Spiral_84x46_4T.kicad_mod"
+    pretty = LIB / "footprints" / "NFC_BusinessCard.pretty"
+    path = pretty / f"{fp_name}.kicad_mod"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Drop legacy misnamed footprint if present
+    legacy = pretty / "Antenna_Spiral_84x46_4T.kicad_mod"
+    if legacy.exists() and legacy.resolve() != path.resolve():
+        legacy.unlink()
 
     (ROOT / "antenna" / "spiral_points.csv").write_text(
         "x_mm,y_mm\n" + "\n".join(f"{x:.4f},{y:.4f}" for x, y in pts) + "\n",
@@ -889,11 +982,13 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
     d_avg = (d_out + d_in) / 2
     fill = (d_out - d_in) / (d_out + d_in)
     L_uh = 0.027 * (n**2) * (d_avg / 10) / (1 + 2.75 * fill)
+    f_mhz = 1e3 / (2 * math.pi * math.sqrt(L_uh * 50.0)) if L_uh > 0 else 0.0
     (ROOT / "antenna" / "estimate.txt").write_text(
         f"outer_w={outer_w} mm\nouter_h={outer_h} mm\nturns={n}\n"
         f"width={TRACE_W} gap={GAP}\nd_avg={d_avg:.2f} fill={fill:.3f}\n"
         f"L_estimate≈{L_uh:.2f} uH (rough)\n"
-        f"target≈2.2 µH for ~14.5 MHz nominal with 50 pF + parasitics\n"
+        f"f_res≈{f_mhz:.1f} MHz with Cin=50 pF only (parasitics lower this)\n"
+        f"target L≈2.2–2.8 µH; first article may need C1≈10–22 pF\n"
         f"chip_island_w=n/a\n"
         f"text_zone_w={TEXT_ZONE_W} mm\n"
         f"comp_strip_w={COMP_STRIP_W} mm\n",
@@ -924,6 +1019,7 @@ def main() -> None:
     ensure_dirs()
     write_symbol_lib()
     write_xqfn_footprint()
+    write_gnd_island_footprint()
     write_antenna_footprint()
     write_c0402_footprint()
     write_fp_lib_table()

@@ -11,10 +11,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from card_copy import NAME  # noqa: E402
 from jlcpcb_limits import (  # noqa: E402
+    ANTENNA_FEED_PAD_D_MM,
+    ANTENNA_GAP_MM,
+    ANTENNA_TRACE_W_MM,
     DESIGN_MASK_BRIDGE_MM,
     DESIGN_TRACE_CLEARANCE_MM,
     FEED_BUS_HALF_PITCH_MM,
+    FEED_LA_BYPASS_DX_MM,
     FEED_TRACE_W_MM,
+    GND_ISLAND_DX_MM,
+    GND_ISLAND_H_MM,
+    GND_ISLAND_W_MM,
     JLC_MIN_MASK_BRIDGE_MM,
     JLC_MIN_TRACE_CLEARANCE_MM,
     JLC_MIN_TRACE_WIDTH_MM,
@@ -30,6 +37,7 @@ from generate_kicad_project import (  # noqa: E402
     TRACE_W,
     TURNS,
     feed_routes,
+    gnd_island_route,
     nfc_layout,
     xqfn_pad_wh,
 )
@@ -42,6 +50,7 @@ warnings: list[str] = []
 lay = nfc_layout()
 pts = lay["ant_pts"]
 abs_pts = [(lay["ant_cx"] + x, lay["ant_cy"] + y) for x, y in pts]
+u1_x, u1_y = lay["u1"]
 
 for x, y in abs_pts:
     if x < lay["ant_x0"] - 0.1 or x > BOARD_W or y < 0 or y > BOARD_H:
@@ -91,12 +100,84 @@ elif bus_gap < DESIGN_TRACE_CLEARANCE_MM:
 else:
     print(f"OK: LA/LB bus gap {bus_gap:.3f} mm (pitch {lb_bus - la_bus:.2f} mm)")
 
+la_bypass = u1_x - FEED_LA_BYPASS_DX_MM
+if la_bypass - FEED_TRACE_W_MM / 2 < TEXT_ZONE_W:
+    errors.append(f"LA bypass x={la_bypass:.2f} enters text zone")
+else:
+    print(f"OK: LA bypass x={la_bypass:.2f} mm (skirts left of U1)")
+
+# Feed traces must not hit NC pads (FD/SCL/SDA/VCC/VOUT) or wrong nets
+# Pad centres relative to U1; half-sizes after orientation
+xqfn_pads = {
+    "1": (-0.20, 0.75, 90, "LA"),
+    "2": (-0.75, 0.20, 0, "GND"),
+    "3": (-0.75, -0.20, 0, "NC"),
+    "4": (-0.20, -0.75, 90, "NC"),  # FD — historical LA short
+    "5": (0.20, -0.75, 90, "NC"),
+    "6": (0.75, -0.20, 0, "NC"),
+    "7": (0.75, 0.20, 0, "NC"),
+    "8": (0.20, 0.75, 90, "LB"),
+}
+
+
+def pad_bbox(x: float, y: float, rot: float) -> tuple[float, float, float, float]:
+    pw, ph = xqfn_pad_wh(rot)
+    if int(rot) % 180 == 90:
+        hw, hh = ph / 2, pw / 2
+    else:
+        hw, hh = pw / 2, ph / 2
+    return x - hw, y - hh, x + hw, y + hh
+
+
+def rect_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    dx = max(0.0, max(ax0 - bx1, bx0 - ax1))
+    dy = max(0.0, max(ay0 - by1, by0 - ay1))
+    return math.hypot(dx, dy)
+
+
+def seg_hits_rect(
+    x0: float, y0: float, x1: float, y1: float, w: float, rect: tuple[float, float, float, float]
+) -> bool:
+    """Axis-aligned segment vs axis-aligned rect, with half-width inflation."""
+    rx0, ry0, rx1, ry1 = rect
+    hw = w / 2
+    if abs(y0 - y1) < 1e-9:  # horizontal
+        sy = y0
+        lo, hi = sorted((x0, x1))
+        return not (hi < rx0 - hw or lo > rx1 + hw or sy < ry0 - hw or sy > ry1 + hw)
+    if abs(x0 - x1) < 1e-9:  # vertical
+        sx = x0
+        lo, hi = sorted((y0, y1))
+        return not (sx < rx0 - hw or sx > rx1 + hw or hi < ry0 - hw or lo > ry1 + hw)
+    return False
+
+
+for num, (px, py, rot, pad_net) in xqfn_pads.items():
+    rect = pad_bbox(u1_x + px, u1_y + py, rot)
+    for x0, y0, x1, y1, net, w in routes:
+        if pad_net != "NC" and net == pad_net:
+            continue  # intentional connection to LA/LB/GND pads
+        if seg_hits_rect(x0, y0, x1, y1, w, rect):
+            errors.append(f"Feed net {net} hits U1 pad {num} ({pad_net}) — copper short")
+
+print("OK: feed routes clear of NC pads (incl. FD)")
+
 if TRACE_W < JLC_MIN_TRACE_WIDTH_MM:
     errors.append(f"Antenna trace {TRACE_W} mm < JLC min")
 if GAP < DESIGN_TRACE_CLEARANCE_MM:
     warnings.append(f"Antenna turn gap {GAP} mm below design target {DESIGN_TRACE_CLEARANCE_MM} mm")
 elif GAP >= DESIGN_TRACE_CLEARANCE_MM:
     print(f"OK: antenna turn gap {GAP:.2f} mm")
+
+feed_clr = (ANTENNA_TRACE_W_MM + ANTENNA_GAP_MM) - ANTENNA_FEED_PAD_D_MM / 2 - ANTENNA_TRACE_W_MM / 2
+if feed_clr < JLC_MIN_TRACE_CLEARANCE_MM:
+    errors.append(f"Antenna feed pad clearance {feed_clr:.3f} mm < JLC min {JLC_MIN_TRACE_CLEARANCE_MM} mm")
+elif feed_clr < DESIGN_TRACE_CLEARANCE_MM - 1e-9:
+    warnings.append(f"Antenna feed pad clearance {feed_clr:.3f} mm below design target {DESIGN_TRACE_CLEARANCE_MM} mm")
+else:
+    print(f"OK: antenna feed pad Ø{ANTENNA_FEED_PAD_D_MM} mm, clearance {feed_clr:.3f} mm")
 
 print(f"OK: text zone width {TEXT_ZONE_W:.0f} mm (copper-free)")
 print(f"OK: antenna {lay['ant_w']:.1f}×{lay['ant_h']:.1f} mm, {TURNS} turns")
@@ -110,9 +191,40 @@ d_in = d_out - 2 * n * (TRACE_W + GAP)
 d_avg = (d_out + d_in) / 2
 fill = (d_out - d_in) / (d_out + d_in) if (d_out + d_in) else 0
 L_uh = 0.027 * (n**2) * (d_avg / 10) / (1 + 2.75 * fill)
-print(f"OK: rough L≈{L_uh:.2f} µH (nominal ~14.5 MHz with 50 pF + parasitics)")
+f_mhz = 1e3 / (2 * math.pi * math.sqrt(L_uh * 50.0)) if L_uh > 0 else 0.0
+print(f"OK: rough L≈{L_uh:.2f} µH → f_res≈{f_mhz:.1f} MHz with Cin=50 pF (C1 may be needed)")
 if not (1.5 <= L_uh <= 6.0):
     warnings.append(f"L estimate {L_uh:.2f} µH outside expected band")
+
+gnd_routes = gnd_island_route(lay["u1"])
+gnd_x = u1_x - GND_ISLAND_DX_MM
+gnd_y = u1_y + 0.20
+if gnd_x <= TEXT_ZONE_W or gnd_x >= lay["ant_x0"]:
+    errors.append(f"GND island x={gnd_x:.2f} not in component strip")
+elif not gnd_routes:
+    errors.append("GND island route missing")
+else:
+    bypass_edge = la_bypass + FEED_TRACE_W_MM / 2
+    island_left = gnd_x - GND_ISLAND_W_MM / 2
+    if island_left < bypass_edge + JLC_MIN_TRACE_CLEARANCE_MM:
+        errors.append(
+            f"GND island vs LA bypass clearance too tight "
+            f"(island {gnd_x:.2f}, bypass {la_bypass:.2f})"
+        )
+    else:
+        # Clearance to SCL (pad 3) — historical DRC hit with oversized island
+        scl = pad_bbox(u1_x - 0.75, u1_y - 0.20, 0)
+        island = (
+            gnd_x - GND_ISLAND_W_MM / 2,
+            gnd_y - GND_ISLAND_H_MM / 2,
+            gnd_x + GND_ISLAND_W_MM / 2,
+            gnd_y + GND_ISLAND_H_MM / 2,
+        )
+        gnd_scl = rect_gap(island, scl)
+        if gnd_scl < DESIGN_TRACE_CLEARANCE_MM:
+            errors.append(f"GND island vs SCL clearance {gnd_scl:.3f} mm < {DESIGN_TRACE_CLEARANCE_MM} mm")
+        else:
+            print(f"OK: local GND island at x={gnd_x:.2f} mm (vs SCL {gnd_scl:.2f} mm)")
 
 pcb_path = ROOT / "nfc-business-card.kicad_pcb"
 name_bottom_preview = float(name_ink_bounds_mm(NAME).bottom)
@@ -151,44 +263,34 @@ else:
     if name_right > TEXT_ZONE_W - NAME_RIGHT_MARGIN_MM:
         warnings.append(f"Name may exceed text zone ({name_right:.1f} > {TEXT_ZONE_W - NAME_RIGHT_MARGIN_MM:.1f} mm)")
 
-# XQFN pad 1 (LA) vs 8 (LB) — row pads on top edge
+# XQFN adjacent pads on the same side: short axis = ROW
 row_gap = XQFN_PITCH_MM - XQFN_PAD_ROW_MM
 if row_gap < JLC_MIN_MASK_BRIDGE_MM:
-    errors.append(f"XQFN pads 1/8 gap {row_gap:.3f} mm < JLC min {JLC_MIN_MASK_BRIDGE_MM} mm")
+    errors.append(f"XQFN same-side pad gap {row_gap:.3f} mm < JLC min {JLC_MIN_MASK_BRIDGE_MM} mm")
 elif row_gap < DESIGN_MASK_BRIDGE_MM:
-    warnings.append(f"XQFN pads 1/8 gap {row_gap:.3f} mm below design target {DESIGN_MASK_BRIDGE_MM} mm")
+    warnings.append(f"XQFN same-side pad gap {row_gap:.3f} mm below design target {DESIGN_MASK_BRIDGE_MM} mm")
 else:
-    print(f"OK: XQFN pads 1/8 gap {row_gap:.3f} mm (row pad {XQFN_PAD_ROW_MM} mm)")
+    print(f"OK: XQFN same-side pad gap {row_gap:.3f} mm (row pad {XQFN_PAD_ROW_MM} mm)")
 
-# Pad corner clearance: pad 1 vs pad 2 (top-left corner)
-pads = {
-    "1": (-0.20, 0.75, 90),
-    "8": (0.20, 0.75, 90),
-    "2": (-0.75, 0.20, 0),
-}
-
-
-def pad_bbox(x: float, y: float, rot: float) -> tuple[float, float, float, float]:
-    pw, ph = xqfn_pad_wh(rot)
-    if int(rot) % 180 == 90:
-        hw, hh = ph / 2, pw / 2
-    else:
-        hw, hh = pw / 2, ph / 2
-    return x - hw, y - hh, x + hw, y + hh
+# Explicit side-pad bbox check (catches orientation regressions like 2↔3 overlap)
+for a, b in (("2", "3"), ("6", "7"), ("1", "8"), ("4", "5")):
+    ra = pad_bbox(u1_x + xqfn_pads[a][0], u1_y + xqfn_pads[a][1], xqfn_pads[a][2])
+    rb = pad_bbox(u1_x + xqfn_pads[b][0], u1_y + xqfn_pads[b][1], xqfn_pads[b][2])
+    # gap along the shared axis
+    ax0, ay0, ax1, ay1 = ra
+    bx0, by0, bx1, by1 = rb
+    gap = max(0.0, max(ax0 - bx1, bx0 - ax1, ay0 - by1, by0 - ay1))
+    if gap < 1e-6:
+        errors.append(f"XQFN pads {a}/{b} overlap (orientation bug?)")
+    elif abs(gap - row_gap) > 0.02:
+        warnings.append(f"XQFN pads {a}/{b} gap {gap:.3f} mm (expected ~{row_gap:.3f})")
 
 
-def rect_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
-    ax0, ay0, ax1, ay1 = a
-    bx0, by0, bx1, by1 = b
-    dx = max(0.0, max(ax0 - bx1, bx0 - ax1))
-    dy = max(0.0, max(ay0 - by1, by0 - ay1))
-    return math.hypot(dx, dy)
-
-
-p1 = pad_bbox(*pads["1"])
-p8 = pad_bbox(*pads["8"])
-p2 = pad_bbox(*pads["2"])
-corner_gap = min(rect_gap(p1, p2), rect_gap(p8, pad_bbox(0.75, 0.20, 0)))
+p1 = pad_bbox(u1_x - 0.20, u1_y + 0.75, 90)
+p2 = pad_bbox(u1_x - 0.75, u1_y + 0.20, 0)
+p8 = pad_bbox(u1_x + 0.20, u1_y + 0.75, 90)
+p7 = pad_bbox(u1_x + 0.75, u1_y + 0.20, 0)
+corner_gap = min(rect_gap(p1, p2), rect_gap(p8, p7))
 if corner_gap < JLC_MIN_MASK_BRIDGE_MM:
     errors.append(f"XQFN corner pad gap {corner_gap:.3f} mm < JLC min {JLC_MIN_MASK_BRIDGE_MM} mm")
 elif corner_gap < DESIGN_MASK_BRIDGE_MM:

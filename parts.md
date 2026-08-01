@@ -27,7 +27,7 @@ Verified 2026-07-14 against LCSC / JLCPCB Parts Library.
 | Pin | Symbol | Connection |
 |-----|--------|------------|
 | 1 | LA | Antenna |
-| 2 | VSS | GND pour (local only near chip; no copper under antenna) |
+| 2 | VSS | Local GND island left of U1 (component strip only; no copper under antenna) |
 | 3 | SCL | NC (test pad optional) |
 | 4 | FD | NC (test pad optional) |
 | 5 | SDA | NC (test pad optional) |

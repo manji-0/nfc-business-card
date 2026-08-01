@@ -91,7 +91,7 @@
 			(at 0 -5.08 0)
 			(effects (font (size 1.27 1.27)))
 		)
-		(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_84x46_4T"
+		(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_29x45_5T"
 			(at 0 0 0)
 			(effects (font (size 1.27 1.27)) (hide yes))
 		)

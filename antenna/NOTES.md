@@ -13,8 +13,9 @@ With \( f = 13.56\,\mathrm{MHz} \), \( C = 50\,\mathrm{pF} \):
 L = \frac{1}{(2\pi f)^2 C} \approx 2.76\,\mu\mathrm{H}
 \]
 
-Design target: **L ≈ 2.0–2.4 µH** (5 turns) for **~14–14.5 MHz** nominal with 50 pF + parasitics.
-If the finished card reads poorly, populate C1 (start ~5–15 pF NP0) to pull frequency down.
+Design target: **L ≈ 2.0–2.4 µH** (5 turns). With Cin=50 pF alone this is often **~15–16 MHz**;
+parasitics and a DNP C1 (**10–22 pF** NP0) pull toward 13.56 MHz on first article.
+If range is still poor after C1, consider 6 turns (L≈2.6 µH).
 
 References:
 
@@ -34,14 +35,14 @@ References:
 
 Reference-style segregation: electronics at the feed gap, artwork freedom on the left.
 
-Rough L ≈ **2.2 µH** (nominal ~14.5 MHz). First-article phone tests decide whether C1 is needed.
+Rough L ≈ **1.9 µH** → f_res ≈ **16 MHz** with Cin=50 pF alone. First-article phone tests + C1 decide trim.
 
 ## Layout rules
 
 1. Keep ≥ 3 mm clearance from Edge.Cuts to outer turn.
 2. Do not place ground pour under the spiral.
 3. Place U1 and C1 pads at the feed gap; short LA/LB traces.
-4. VSS may have a tiny local pad / pour at the chip only — do not flood the antenna area.
+4. VSS has a tiny local copper island left of U1 in the component strip — do not flood the antenna area.
 5. Center EP of XQFN-8: **no solder paste / no net** (datasheet).
 
 ## Verification after PCBA

@@ -1,4 +1,4 @@
-(footprint "Antenna_Spiral_84x46_4T"
+(footprint "Antenna_Spiral_29x45_5T"
 	(version 20260206)
 	(generator "nfc_business_card")
 	(layer "F.Cu")
@@ -35,6 +35,6 @@
 	(fp_line (start 12.3000 -20.3000) (end 12.3000 20.3000) (layer "F.Cu") (stroke (width 0.25) (type solid)))
 	(fp_line (start 12.3000 20.3000) (end -12.3000 20.3000) (layer "F.Cu") (stroke (width 0.25) (type solid)))
 	(fp_line (start -12.3000 20.3000) (end -12.3000 -19.7500) (layer "F.Cu") (stroke (width 0.25) (type solid)))
-	(pad "1" smd circle (at -14.5000 -22.5000) (size 0.6 0.6) (layers "F.Cu" "F.Mask") (uuid c7c4bbb1-b4a3-4f84-ac2f-bb5d5ce313ac))
-	(pad "2" smd circle (at -12.3000 -19.7500) (size 0.6 0.6) (layers "F.Cu" "F.Mask") (uuid 90319ad7-7dad-4c61-a011-cb559b891728))
+	(pad "1" smd circle (at -14.5000 -22.5000) (size 0.45 0.45) (layers "F.Cu" "F.Mask") (uuid 35ed2bec-37f2-40f5-9a44-1ca36b740f61))
+	(pad "2" smd circle (at -12.3000 -19.7500) (size 0.45 0.45) (layers "F.Cu" "F.Mask") (uuid a6a6a65e-25ee-4f96-bd52-ca385d90e761))
 )

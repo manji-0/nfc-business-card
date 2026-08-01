@@ -216,7 +216,7 @@ def fp_pad_roundrect(
 \t\t)"""
 
 
-def fp_pad_circle(num: str, x: float, y: float, *, net: str | None = None, size: float = 0.6) -> str:
+def fp_pad_circle(num: str, x: float, y: float, *, net: str | None = None, size: float = 0.45) -> str:
     net_line = f'\n\t\t\t(net "{net}")' if net else ""
     return f"""\t\t(pad "{num}" smd circle
 \t\t\t(at {fmt_xy(x, y)})
