@@ -241,7 +241,7 @@ def write_symbol_lib() -> None:
 \t\t\t\t(name "LA" (effects (font (size 1.27 1.27))))
 \t\t\t\t(number "1" (effects (font (size 1.27 1.27))))
 \t\t\t)
-\t\t\t(pin power_in line (at -10.16 2.54 0) (length 2.54)
+\t\t\t(pin passive line (at -10.16 2.54 0) (length 2.54)
 \t\t\t\t(name "VSS" (effects (font (size 1.27 1.27))))
 \t\t\t\t(number "2" (effects (font (size 1.27 1.27))))
 \t\t\t)
@@ -292,7 +292,7 @@ def write_symbol_lib() -> None:
 \t\t\t(at 0 0 0)
 \t\t\t(effects (font (size 1.27 1.27)) (hide yes))
 \t\t)
-\t\t(property "Description" "PCB spiral NFC antenna ~2.7uH"
+\t\t(property "Description" "PCB spiral NFC antenna net-tie"
 \t\t\t(at 0 0 0)
 \t\t\t(effects (font (size 1.27 1.27)) (hide yes))
 \t\t)
@@ -321,6 +321,56 @@ def write_symbol_lib() -> None:
 \t\t\t\t(name "2" (effects (font (size 1.27 1.27))))
 \t\t\t\t(number "2" (effects (font (size 1.27 1.27))))
 \t\t\t)
+\t\t)
+\t)
+\t(symbol "C_0402"
+\t\t(pin_numbers (hide yes))
+\t\t(pin_names (offset 0.254))
+\t\t(exclude_from_sim no)
+\t\t(in_bom yes)
+\t\t(on_board yes)
+\t\t(property "Reference" "C" (at 0.635 2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
+\t\t(property "Value" "C_0402" (at 0.635 -2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
+\t\t(property "Footprint" "NFC_BusinessCard:C_0402_1005Metric" (at 0.9652 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(symbol "C_0402_0_1"
+\t\t\t(polyline (pts (xy -2.032 -0.762) (xy 2.032 -0.762)) (stroke (width 0.508) (type default)) (fill (type none)))
+\t\t\t(polyline (pts (xy -2.032 0.762) (xy 2.032 0.762)) (stroke (width 0.508) (type default)) (fill (type none)))
+\t\t)
+\t\t(symbol "C_0402_1_1"
+\t\t\t(pin passive line (at 0 3.81 270) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+\t\t\t(pin passive line (at 0 -3.81 90) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+\t\t)
+\t)
+\t(symbol "GND"
+\t\t(power)
+\t\t(pin_numbers (hide yes))
+\t\t(pin_names (offset 0))
+\t\t(exclude_from_sim no)
+\t\t(in_bom no)
+\t\t(on_board no)
+\t\t(property "Reference" "#PWR" (at 0 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Value" "GND" (at 0 -3.81 0) (effects (font (size 1.27 1.27))))
+\t\t(property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(symbol "GND_0_1"
+\t\t\t(polyline (pts (xy 0 0) (xy 0 -1.27) (xy 1.27 -1.27) (xy 0 -2.54) (xy -1.27 -1.27) (xy 0 -1.27))
+\t\t\t\t(stroke (width 0) (type default)) (fill (type none)))
+\t\t)
+\t\t(symbol "GND_1_1"
+\t\t\t(pin power_in line (at 0 0 0) (length 0) (name "GND" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+\t\t)
+\t)
+\t(symbol "PWR_FLAG"
+\t\t(power)
+\t\t(pin_numbers (hide yes))
+\t\t(pin_names (offset 0))
+\t\t(exclude_from_sim no)
+\t\t(in_bom no)
+\t\t(on_board no)
+\t\t(property "Reference" "#FLG" (at 0 1.905 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Value" "PWR_FLAG" (at 0 1.905 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(symbol "PWR_FLAG_0_0"
+\t\t\t(pin power_out line (at 0 0 0) (length 0) (name "pwr" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
 \t\t)
 \t)
 )
@@ -501,8 +551,9 @@ def write_project(schematic_uuid: str) -> None:
 
 
 def write_schematic(schematic_uuid: str) -> None:
-    """Minimal schematic: U1 + ANT1 + C1(DNP)."""
+    """Minimal schematic: U1 + ANT1 + C1(DNP), on 1.27 mm grid with NC / PWR_FLAG."""
     sheet_path = f"/{schematic_uuid}"
+    # All coordinates are multiples of 1.27 mm (KiCad default connection grid).
     path = ROOT / "nfc-business-card.kicad_sch"
     path.write_text(
         f"""(kicad_sch
@@ -528,13 +579,16 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t\t(property "Reference" "U" (at 0 8.89 0) (effects (font (size 1.27 1.27))))
 \t\t\t(property "Value" "NT3H2111W0FHKH" (at 0 -8.89 0) (effects (font (size 1.27 1.27))))
 \t\t\t(property "Footprint" "NFC_BusinessCard:XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t\t(property "Datasheet" "https://www.nxp.com/docs/en/data-sheet/NT3H2111_2211.pdf" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t\t(property "Description" "NTAG I2C plus Type 2 Tag, 1kB, 50pF" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
 \t\t\t(property "LCSC Part #" "C710403" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t\t(property "ki_keywords" "NFC NTAG Type2" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
 \t\t\t(symbol "NT3H2111W0FHKH_0_1"
 \t\t\t\t(rectangle (start -7.62 7.62) (end 7.62 -7.62) (stroke (width 0.254) (type default)) (fill (type background)))
 \t\t\t)
 \t\t\t(symbol "NT3H2111W0FHKH_1_1"
 \t\t\t\t(pin passive line (at -10.16 5.08 0) (length 2.54) (name "LA" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin power_in line (at -10.16 2.54 0) (length 2.54) (name "VSS" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+\t\t\t\t(pin passive line (at -10.16 2.54 0) (length 2.54) (name "VSS" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
 \t\t\t\t(pin passive line (at -10.16 0 0) (length 2.54) (name "SCL" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27)))))
 \t\t\t\t(pin passive line (at -10.16 -2.54 0) (length 2.54) (name "FD" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27)))))
 \t\t\t\t(pin passive line (at 10.16 -2.54 180) (length 2.54) (name "SDA" (effects (font (size 1.27 1.27)))) (number "5" (effects (font (size 1.27 1.27)))))
@@ -551,28 +605,31 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t\t(property "Reference" "ANT" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
 \t\t\t(property "Value" "Antenna_NFC" (at 0 -5.08 0) (effects (font (size 1.27 1.27))))
 \t\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_29x45_5T" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t\t(property "Datasheet" "~" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t\t(property "Description" "PCB spiral NFC antenna net-tie" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
 \t\t\t(symbol "Antenna_NFC_0_1"
 \t\t\t\t(arc (start -2.54 0) (mid 0 2.54) (end 2.54 0) (stroke (width 0) (type default)) (fill (type none)))
+\t\t\t\t(arc (start -1.27 0) (mid 0 1.27) (end 1.27 0) (stroke (width 0) (type default)) (fill (type none)))
 \t\t\t)
 \t\t\t(symbol "Antenna_NFC_1_1"
 \t\t\t\t(pin passive line (at -5.08 0 0) (length 2.54) (name "1" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
 \t\t\t\t(pin passive line (at 5.08 0 180) (length 2.54) (name "2" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
 \t\t\t)
 \t\t)
-\t\t(symbol "Device:C"
+\t\t(symbol "NFC_BusinessCard:C_0402"
 \t\t\t(pin_numbers (hide yes))
 \t\t\t(pin_names (offset 0.254))
 \t\t\t(exclude_from_sim no)
 \t\t\t(in_bom yes)
 \t\t\t(on_board yes)
 \t\t\t(property "Reference" "C" (at 0.635 2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t\t(property "Value" "C" (at 0.635 -2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
+\t\t\t(property "Value" "C_0402" (at 0.635 -2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
 \t\t\t(property "Footprint" "NFC_BusinessCard:C_0402_1005Metric" (at 0.9652 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(symbol "C_0_1"
+\t\t\t(symbol "C_0402_0_1"
 \t\t\t\t(polyline (pts (xy -2.032 -0.762) (xy 2.032 -0.762)) (stroke (width 0.508) (type default)) (fill (type none)))
 \t\t\t\t(polyline (pts (xy -2.032 0.762) (xy 2.032 0.762)) (stroke (width 0.508) (type default)) (fill (type none)))
 \t\t\t)
-\t\t\t(symbol "C_1_1"
+\t\t\t(symbol "C_0402_1_1"
 \t\t\t\t(pin passive line (at 0 3.81 270) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
 \t\t\t\t(pin passive line (at 0 -3.81 90) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
 \t\t\t)
@@ -593,6 +650,20 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t\t)
 \t\t\t(symbol "GND_1_1"
 \t\t\t\t(pin power_in line (at 0 0 0) (length 0) (name "GND" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+\t\t\t)
+\t\t)
+\t\t(symbol "NFC_BusinessCard:PWR_FLAG"
+\t\t\t(power)
+\t\t\t(pin_numbers (hide yes))
+\t\t\t(pin_names (offset 0))
+\t\t\t(exclude_from_sim no)
+\t\t\t(in_bom no)
+\t\t\t(on_board no)
+\t\t\t(property "Reference" "#FLG" (at 0 1.905 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t\t(property "Value" "PWR_FLAG" (at 0 1.905 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t\t(property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t\t(symbol "PWR_FLAG_0_0"
+\t\t\t\t(pin power_out line (at 0 0 0) (length 0) (name "pwr" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
 \t\t\t)
 \t\t)
 \t)
@@ -636,7 +707,7 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "ANT1") (unit 1))))
 \t)
 \t(symbol
-\t\t(lib_id "Device:C")
+\t\t(lib_id "NFC_BusinessCard:C_0402")
 \t\t(at 106.68 68.58 0)
 \t\t(unit 1)
 \t\t(exclude_from_sim no)
@@ -652,17 +723,6 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t(pin "2" (uuid {uid()}))
 \t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "C1") (unit 1))))
 \t)
-\t(wire (pts (xy 83.82 78.74) (xy 102.87 78.74)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 102.87 78.74) (xy 102.87 85.09)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 102.87 85.09) (xy 116.84 90.17)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 106.68 72.39) (xy 102.87 72.39)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 102.87 72.39) (xy 102.87 85.09)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 93.98 78.74) (xy 120.13 78.74)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 120.13 78.74) (xy 120.13 85.09)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 120.13 85.09) (xy 137.16 90.17)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 106.68 64.77) (xy 120.13 64.77)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 120.13 64.77) (xy 120.13 85.09)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 116.84 87.63) (xy 116.84 93.98)) (stroke (width 0) (type default)) (uuid {uid()}))
 \t(symbol
 \t\t(lib_id "NFC_BusinessCard:GND")
 \t\t(at 116.84 93.98 0)
@@ -678,9 +738,41 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t(pin "1" (uuid {uid()}))
 \t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#PWR01") (unit 1))))
 \t)
-\t(label "LA" (at 102.87 85.09 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
-\t(label "LB" (at 120.13 85.09 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
-\t(text "Passive NFC business card\\nU1=NT3H2111 (C710403)\\nC1=DNP tuning across LA-LB\\nVSS=GND (local); SCL/SDA/FD/VCC/VOUT NC"
+\t(symbol
+\t\t(lib_id "NFC_BusinessCard:PWR_FLAG")
+\t\t(at 114.3 93.98 0)
+\t\t(unit 1)
+\t\t(exclude_from_sim no)
+\t\t(in_bom no)
+\t\t(on_board no)
+\t\t(dnp no)
+\t\t(uuid {uid()})
+\t\t(property "Reference" "#FLG01" (at 114.3 91.44 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Value" "PWR_FLAG" (at 114.3 91.44 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Footprint" "" (at 114.3 93.98 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(pin "1" (uuid {uid()}))
+\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#FLG01") (unit 1))))
+\t)
+\t(wire (pts (xy 83.82 78.74) (xy 81.28 78.74)) (stroke (width 0) (type default)) (uuid {uid()}))
+\t(label "LA" (at 81.28 78.74 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
+\t(wire (pts (xy 116.84 80.01) (xy 114.3 80.01)) (stroke (width 0) (type default)) (uuid {uid()}))
+\t(label "LA" (at 114.3 80.01 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
+\t(wire (pts (xy 106.68 72.39) (xy 106.68 74.93)) (stroke (width 0) (type default)) (uuid {uid()}))
+\t(label "LA" (at 106.68 74.93 270) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
+\t(wire (pts (xy 93.98 78.74) (xy 96.52 78.74)) (stroke (width 0) (type default)) (uuid {uid()}))
+\t(label "LB" (at 96.52 78.74 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
+\t(wire (pts (xy 137.16 80.01) (xy 139.7 80.01)) (stroke (width 0) (type default)) (uuid {uid()}))
+\t(label "LB" (at 139.7 80.01 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
+\t(wire (pts (xy 106.68 64.77) (xy 106.68 62.23)) (stroke (width 0) (type default)) (uuid {uid()}))
+\t(label "LB" (at 106.68 62.23 90) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
+\t(wire (pts (xy 116.84 82.55) (xy 116.84 93.98)) (stroke (width 0) (type default)) (uuid {uid()}))
+\t(wire (pts (xy 116.84 93.98) (xy 114.3 93.98)) (stroke (width 0) (type default)) (uuid {uid()}))
+\t(no_connect (at 116.84 85.09) (uuid {uid()}))
+\t(no_connect (at 116.84 87.63) (uuid {uid()}))
+\t(no_connect (at 137.16 82.55) (uuid {uid()}))
+\t(no_connect (at 137.16 85.09) (uuid {uid()}))
+\t(no_connect (at 137.16 87.63) (uuid {uid()}))
+\t(text "Passive NFC business card\\nU1=NT3H2111 (C710403)\\nC1=DNP tuning across LA-LB (try 10–22 pF)\\nVSS=GND (local); SCL/SDA/FD/VCC/VOUT NC"
 \t\t(at 88.9 104.14 0)
 \t\t(effects (font (size 1.27 1.27)) (justify left bottom))
 \t\t(uuid {uid()})

@@ -43,8 +43,8 @@ Verified 2026-07-14 against LCSC / JLCPCB Parts Library.
 | Ref | C1 |
 | Footprint | C_0402_1005Metric |
 | Default | **Do Not Place** |
-| Candidate if needed | 10 pF NP0 0402, e.g. LCSC **C158992** |
-| Notes | Parallel across LA–LB. Populate only if read range is poor after first PCBA. |
+| Candidate if needed | **10–22 pF** NP0 0402 (start ~15 pF). e.g. 10 pF LCSC **C158992**, 15 pF **C1525**, 22 pF **C1528** |
+| Notes | Parallel across LA–LB. With L≈1.9 µH, Cin=50 pF alone is ~16 MHz; C1 pulls toward 13.56 MHz. Populate only after first-article phone tests. |
 
 ## Alternates (if C710403 unavailable at order time)
 
