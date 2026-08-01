@@ -1,0 +1,13 @@
+[project]
+name = "nfc-business-card"
+version = "0.1.0"
+description = "KiCad generator and fab pipeline for an NFC business card PCB"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pillow>=10.0",
+    "qrcode>=7.4",
+]
+
+[tool.uv]
+package = false

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+
+if command -v uv >/dev/null && [[ -f "${ROOT}/pyproject.toml" ]]; then
+  exec uv run python "${ROOT}/scripts/task.py" "$@"
+fi
+
 PYTHON="${ROOT}/.venv/bin/python"
 if [[ ! -x "$PYTHON" ]]; then
   PYTHON="$(command -v python3)"

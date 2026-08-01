@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from generate_kicad_project import ASSETS, LOGOS, nfc_layout  # noqa: E402
 from gerber_silk import SilkBitmap, append_bitmaps_to_gerber  # noqa: E402
+from kicad_paths import find_kicad_cli  # noqa: E402
 from silk_layout import (  # noqa: E402
     CONTACT_X_MM,
     NFC_LOGO_SIZE_MM,
@@ -34,7 +35,6 @@ from silk_layout import (  # noqa: E402
 FAB = ROOT / "fab"
 GERBER_DIR = FAB / "gerber"
 PCB = ROOT / "nfc-business-card.kicad_pcb"
-KICAD_CLI = Path("/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli")
 
 JLC_GERBER_GLOBS = (
     "*-F_Cu.gbr",
@@ -66,22 +66,24 @@ def _clean_fab_stale() -> None:
             scratch.unlink()
 
 
-def _require_kicad_cli() -> None:
-    if not KICAD_CLI.is_file():
+def _require_kicad_cli() -> Path:
+    try:
+        return find_kicad_cli()
+    except FileNotFoundError as exc:
         raise FileNotFoundError(
-            f"KiCad CLI not found at {KICAD_CLI}. Install KiCad or set KICAD_CLI."
-        )
+            f"{exc} Install KiCad 10+ or set KICAD_CLI."
+        ) from exc
 
 
 def _run_kicad_export() -> None:
-    _require_kicad_cli()
+    kicad_cli = _require_kicad_cli()
     if GERBER_DIR.exists():
         shutil.rmtree(GERBER_DIR)
     GERBER_DIR.mkdir(parents=True)
 
     subprocess.run(
         [
-            str(KICAD_CLI),
+            str(kicad_cli),
             "pcb",
             "export",
             "gerbers",
@@ -94,7 +96,7 @@ def _run_kicad_export() -> None:
         check=True,
     )
     subprocess.run(
-        [str(KICAD_CLI), "pcb", "export", "drill", "-o", str(GERBER_DIR), str(PCB)],
+        [str(kicad_cli), "pcb", "export", "drill", "-o", str(GERBER_DIR), str(PCB)],
         check=True,
     )
 
@@ -153,10 +155,11 @@ def _write_bom() -> None:
 
 def _write_positions() -> list[tuple[str, float, float, float, str]]:
     """Export CPL via KiCad CLI (JLCPCB expects KiCad pos coords, not preview Y)."""
+    kicad_cli = _require_kicad_cli()
     tmp = FAB / ".kicad-pos.csv"
     subprocess.run(
         [
-            str(KICAD_CLI),
+            str(kicad_cli),
             "pcb",
             "export",
             "pos",
@@ -239,7 +242,7 @@ fab/
 ./task export
 ```
 
-Requires KiCad 10+ at `/Applications/KiCad/KiCad.app`.
+Requires KiCad 10+ (`kicad-cli` on PATH or macOS app bundle). See [SETUP.md](../SETUP.md).
 
 ## JLCPCB options
 

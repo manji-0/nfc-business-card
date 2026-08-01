@@ -91,12 +91,11 @@ JLCPCB 下限は `scripts/jlcpcb_limits.py` を参照。設計値は JLC 最小�
 ### 再生成コマンド
 
 ```bash
-./task export          # assets → KiCad → preview → check → fab（発注用 zip まで）
-./task design          # fab 出力なし
-./task list            # タスク一覧
+devbox shell          # 初回セットアップ — 詳細は SETUP.md
+./task export
+./task design
+./task list
 ```
-
-個別実行: `./task assets project fab` など、複数指定で順に実行。
 
 KiCad 10 が `/Applications/KiCad/` に必要（氏名の TTF ベイク）。無い場合は stroke フォントにフォールバックする。
 
@@ -141,6 +140,7 @@ KiCad 10 が `/Applications/KiCad/` に必要（氏名の TTF ベイク）。無
 
 ## 8. 関連ドキュメント
 
+- [`SETUP.md`](SETUP.md) — devbox + uv セットアップ（1 から）
 - [`README.md`](README.md) — 概要・JLC 発注・NFC 書き込み
 - [`parts.md`](parts.md) — BOM 固定
 - [`antenna/NOTES.md`](antenna/NOTES.md) — LC チューニング

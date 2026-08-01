@@ -22,6 +22,19 @@ scripts/                    Regenerate project / fab
 parts.md                    Locked BOM
 ```
 
+## Setup (from scratch)
+
+Use **[devbox](https://www.jetify.com/devbox)** + **[uv](https://docs.astral.sh/uv/)** for Python and tooling. KiCad 10+ is installed separately.
+
+```bash
+git clone https://github.com/manji-0/nfc-business-card.git
+cd nfc-business-card
+devbox shell          # installs python, uv, rsvg-convert; runs uv sync
+./task export
+```
+
+Full guide: **[SETUP.md](SETUP.md)** (fonts, KiCad path, troubleshooting).
+
 ## Regenerate design
 
 ```bash

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from kamae.result import Err, Ok, Result
 from kamae.types import HJustify, Layer, Mm, VJustify
+from kicad_paths import find_kicad_python, kicad_python_env
 from name_render_cache import (
     align_gr_text_block_left,
     fit_gr_text_block_width,
@@ -21,11 +22,6 @@ from name_render_cache import (
     shift_gr_text_block,
 )
 from silk_layout import TEXT_LEFT_MM
-
-KICAD_SITE = "/Applications/KiCad/KiCad.app/Contents/Frameworks/python/site-packages"
-KICAD_PYTHON = (
-    "/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3"
-)
 
 _LAYER_CONST: dict[Layer, str] = {
     "F.Cu": "pcbnew.F_Cu",
@@ -148,14 +144,11 @@ def bake_specs_raw(specs: list[TextSpec]) -> Result[list[str], BakeError]:
     code = "\n".join(lines)
 
     try:
-        import os
-
-        env = {**os.environ, "PYTHONPATH": KICAD_SITE}
         proc = subprocess.run(
-            [KICAD_PYTHON, "-c", code],
+            [str(find_kicad_python()), "-c", code],
             capture_output=True,
             text=True,
-            env=env,
+            env=kicad_python_env(),
             check=False,
         )
         if proc.returncode != 0:
