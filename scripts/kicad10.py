@@ -205,12 +205,13 @@ def fp_pad_roundrect(
     *,
     net: str | None = None,
     rratio: float = 0.25,
+    side: str = "F",
 ) -> str:
     net_line = f'\n\t\t\t(net "{net}")' if net else ""
     return f"""\t\t(pad "{num}" smd roundrect
 \t\t\t(at {fmt_xy(x, y, rot)})
 \t\t\t(size {w} {h})
-\t\t\t(layers "F.Cu" "F.Mask" "F.Paste")
+\t\t\t(layers "{side}.Cu" "{side}.Mask" "{side}.Paste")
 \t\t\t(roundrect_rratio {rratio}){net_line}
 \t\t\t(uuid {quuid()})
 \t\t)"""

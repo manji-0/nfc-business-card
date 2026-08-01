@@ -35,3 +35,10 @@ ANTENNA_FEED_PAD_D_MM = 0.45
 GND_ISLAND_DX_MM = 1.7
 GND_ISLAND_W_MM = 0.55
 GND_ISLAND_H_MM = 0.40
+
+# NC pin weak pull-downs to VSS (B.Cu DNP 0402)
+NC_TERM_R_KOHM = 100
+NC_TERM_R_LCSC = "C25744"  # 100 kΩ 0402 1%
+R0402_PAD_OFFSET_MM = 0.48
+NC_TERM_R_OFFSET_MM = 0.85  # resistor center west of U1 NC pad
+NC_TERM_GND_BUS_INSET_MM = 0.25  # B.Cu GND bus left of island edge

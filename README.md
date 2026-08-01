@@ -82,4 +82,4 @@ See [`antenna/NOTES.md`](antenna/NOTES.md) and [`parts.md`](parts.md).
 
 - Left **text zone**: name on **F.Cu** (mask opening + ENIG); roles, QR, contacts in silk.
 - NFC antenna + chip sit on the **right** (reference-card style).
-- If read range is weak, try C1 ≈ 5–15 pF NP0 0402 (e.g. C158992).
+- If read range is weak, try C1 ≈ **10 pF NP0** first (LCSC **C301961**); then 12/15/18 pF per `parts.md`.

@@ -101,7 +101,7 @@ devbox run export
 | KiCad プロジェクト | `nfc-business-card.kicad_pro` |
 | プレビュー画像 | `fab/preview.png` |
 | JLC 用 Gerber zip | `fab/nfc-business-card-gerbers.zip` |
-| BOM / CPL | `fab/bom.csv`, `fab/positions.csv` |
+| BOM / CPL | `fab/bom.csv`, `fab/positions.csv` (C1 DNP); **`fab/bom-c1.csv`**, **`fab/positions-c1.csv`** (C1 = C301961 10 pF) |
 
 ## トラブルシュート
 

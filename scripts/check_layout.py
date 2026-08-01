@@ -10,6 +10,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from card_copy import NAME  # noqa: E402
+from generate_kicad_project import (  # noqa: E402
+    BOARD_H,
+    BOARD_W,
+    GAP,
+    TEXT_ZONE_W,
+    TRACE_W,
+    TURNS,
+    NC_TERMINATORS,
+    feed_routes,
+    gnd_island_route,
+    nc_terminator_placements,
+    nc_terminator_routes,
+    nfc_layout,
+    xqfn_pad_wh,
+)
 from jlcpcb_limits import (  # noqa: E402
     ANTENNA_FEED_PAD_D_MM,
     ANTENNA_GAP_MM,
@@ -25,21 +40,12 @@ from jlcpcb_limits import (  # noqa: E402
     JLC_MIN_MASK_BRIDGE_MM,
     JLC_MIN_TRACE_CLEARANCE_MM,
     JLC_MIN_TRACE_WIDTH_MM,
+    NC_TERM_GND_BUS_INSET_MM,
+    NC_TERM_R_OFFSET_MM,
+    R0402_PAD_OFFSET_MM,
     XQFN_PAD_EDGE_MM,
     XQFN_PAD_ROW_MM,
     XQFN_PITCH_MM,
-)
-from generate_kicad_project import (  # noqa: E402
-    BOARD_H,
-    BOARD_W,
-    GAP,
-    TEXT_ZONE_W,
-    TRACE_W,
-    TURNS,
-    feed_routes,
-    gnd_island_route,
-    nfc_layout,
-    xqfn_pad_wh,
 )
 from silk_layout import NAME_CAP_HEIGHT_MM, NAME_RIGHT_MARGIN_MM, NAME_X_MM, ROLES_Y0_MM, TEXT_ZONE_W  # noqa: E402
 from layout_metrics import name_ink_bounds_mm  # noqa: E402
@@ -134,11 +140,11 @@ else:
 xqfn_pads = {
     "1": (-0.20, 0.75, 90, "LA"),
     "2": (-0.75, 0.20, 0, "GND"),
-    "3": (-0.75, -0.20, 0, "NC"),
-    "4": (-0.20, -0.75, 90, "NC"),  # FD — historical LA short
-    "5": (0.20, -0.75, 90, "NC"),
-    "6": (0.75, -0.20, 0, "NC"),
-    "7": (0.75, 0.20, 0, "NC"),
+    "3": (-0.75, -0.20, 0, "SCL"),
+    "4": (-0.20, -0.75, 90, "FD"),
+    "5": (0.20, -0.75, 90, "SDA"),
+    "6": (0.75, -0.20, 0, "VCC"),
+    "7": (0.75, 0.20, 0, "VOUT"),
     "8": (0.20, 0.75, 90, "LB"),
 }
 
@@ -182,12 +188,28 @@ for num, (px, py, rot, pad_net) in xqfn_pads.items():
     for x0, y0, x1, y1, net, w, layer in routes:
         if layer != "F.Cu":
             continue
-        if pad_net != "NC" and net == pad_net:
-            continue  # intentional connection to LA/LB/GND pads
+        if pad_net not in ("NC",) and net == pad_net:
+            continue  # intentional connection to LA/LB/GND/NC-pin nets
         if seg_hits_rect(x0, y0, x1, y1, w, rect):
             errors.append(f"Feed net {net} hits U1 pad {num} ({pad_net}) — copper short")
 
-print("OK: feed routes clear of NC pads (incl. FD)")
+print("OK: feed routes clear of unrelated U1 pads")
+
+gnd_x = u1_x - GND_ISLAND_DX_MM
+gnd_bus_x = gnd_x - GND_ISLAND_W_MM / 2 - NC_TERM_GND_BUS_INSET_MM
+nc_places = nc_terminator_placements((u1_x, u1_y))
+if len(nc_places) != len(NC_TERMINATORS):
+    errors.append(f"Expected {len(NC_TERMINATORS)} NC terminators, got {len(nc_places)}")
+for ref, _net, rcx, _rcy, _pad_x, _pad_y in nc_places:
+    body_left = rcx - R0402_PAD_OFFSET_MM - 0.31
+    if body_left < TEXT_ZONE_W:
+        errors.append(f"{ref} B.Cu body enters text zone (x={body_left:.2f})")
+    if rcx > lay["ant_x0"]:
+        errors.append(f"{ref} outside component strip")
+if gnd_bus_x < TEXT_ZONE_W:
+    errors.append(f"NC GND bus x={gnd_bus_x:.2f} enters text zone")
+else:
+    print(f"OK: NC terminators R2–R6 on B.Cu, GND bus x={gnd_bus_x:.2f} mm")
 
 if TRACE_W < JLC_MIN_TRACE_WIDTH_MM:
     errors.append(f"Antenna trace {TRACE_W} mm < JLC min")

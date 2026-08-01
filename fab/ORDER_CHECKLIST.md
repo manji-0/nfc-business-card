@@ -16,16 +16,27 @@
 
 - Qty: start with **5**
 - Side: Top
+
+### Variant A — C1 DNP (hand-tune after test)
+
 - BOM: `fab/bom.csv` (U1 = C710403)
-- CPL: `fab/positions.csv` (KiCad pos export — **Mid Y negative**, matches Gerber top-origin)
-- C1 is DNP
+- CPL: `fab/positions.csv`
+
+### Variant B — C1 populated (10 pF NP0, recommended first tuned build)
+
+- BOM: `fab/bom-c1.csv` (U1 = C710403, **C1 = C301961** Walsin 10 pF NP0)
+- CPL: `fab/positions-c1.csv` (U1 + C1, F.Cu top)
+- C1 value targets ~14.6 MHz resonance (see `scripts/tune_antenna.py`)
+
+CPL uses KiCad pos export (**Mid Y negative**, matches Gerber top-origin).
 
 ## Directory layout
 
 ```
 fab/
   nfc-business-card-gerbers.zip   ← upload to JLCPCB
-  bom.csv / positions.csv
+  bom.csv / positions.csv         ← C1 DNP assembly
+  bom-c1.csv / positions-c1.csv   ← C1 populated assembly
   preview.png / preview-front.png
   gerber/                         ← full KiCad export (reference)
 ```
