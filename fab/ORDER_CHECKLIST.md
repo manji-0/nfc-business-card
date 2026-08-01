@@ -38,7 +38,7 @@ fab/
 ./task export
 ```
 
-Requires KiCad 10+ at `/Applications/KiCad/KiCad.app`.
+Requires KiCad 10+ (`kicad-cli` on PATH or macOS app bundle). See [SETUP.md](../SETUP.md).
 
 ## JLCPCB options
 

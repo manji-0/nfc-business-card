@@ -57,11 +57,22 @@ def kicad_site_packages() -> Path:
     if env := os.environ.get("KICAD_SITE"):
         return Path(env)
 
-    mac = Path(
+    # KiCad 10+ macOS: Python.framework/.../lib/python3.X/site-packages
+    fw_lib = Path(
+        "/Applications/KiCad/KiCad.app/Contents/Frameworks/"
+        "Python.framework/Versions/Current/lib"
+    )
+    if fw_lib.is_dir():
+        for candidate in sorted(fw_lib.glob("python*/site-packages")):
+            if candidate.is_dir():
+                return candidate
+
+    # Older KiCad macOS layout
+    mac_legacy = Path(
         "/Applications/KiCad/KiCad.app/Contents/Frameworks/python/site-packages"
     )
-    if mac.is_dir():
-        return mac
+    if mac_legacy.is_dir():
+        return mac_legacy
 
     cli = find_kicad_cli()
     # Nix / Linux: often ../lib/kicad/lib/python3/dist-packages relative to kicad-cli

@@ -7,7 +7,8 @@
   ],
   "shell": {
     "init_hook": [
-      "uv sync --quiet"
+      "uv sync --quiet",
+      ". ./scripts/devbox_kicad_path.sh"
     ],
     "scripts": {
       "task": "./task",

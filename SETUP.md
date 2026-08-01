@@ -48,9 +48,12 @@ rsvg-convert --version
 ### macOS
 
 1. KiCad 10 を `/Applications/KiCad/` にインストール
-2. 確認:
+2. `devbox shell` / `devbox run` は `scripts/devbox_kicad_path.sh` で App 内 CLI を PATH に載せ、`KICAD_CLI` / `KICAD_PYTHON` / `KICAD_SITE` を自動設定する
+3. 確認:
 
 ```bash
+devbox run -- kicad-cli version
+# または
 /Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli version
 ```
 
@@ -63,6 +66,8 @@ export KICAD_CLI=/path/to/kicad-cli
 export KICAD_PYTHON=/path/to/kicad-python   # pcbnew 用（任意）
 export KICAD_SITE=/path/to/kicad/site-packages
 ```
+
+手動で上書きした場合は自動検出より優先される。
 
 ## 5. フォント（シルク・ENIG 名）
 
