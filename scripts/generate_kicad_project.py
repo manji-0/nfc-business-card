@@ -140,7 +140,7 @@ def feed_routes(
         (c1_la[0], c1_la[1], la_x, c1_la[1], "LA", w, "F.Cu"),
         (la_x, c1_la[1], la_x, pad_y, "LA", w, "F.Cu"),
         # LB: F.Cu stub into hollow → B.Cu underpass → F.Cu to pad 8
-        (ant2_abs[0], ant2_abs[1], via_in[0], ant2_abs[1], "LB", w, "F.Cu"),
+        # (antenna net-tie pad 2 sits at via_in_x, ant2_y — route starts there)
         (via_in[0], ant2_abs[1], via_in[0], via_in[1], "LB", w, "F.Cu"),
         (via_in[0], via_in[1], via_out[0], via_in[1], "LB", w, "B.Cu"),
         (via_out[0], via_in[1], via_out[0], via_out[1], "LB", w, "B.Cu"),
@@ -491,11 +491,11 @@ def write_c0402_footprint() -> None:
 \t(layer "F.Cu")
 \t(descr "Capacitor SMD 0402, reexported local for DNP C1")
 \t(tags "capacitor")
-\t(attr smd)
+\t(attr smd exclude_from_pos_files exclude_from_bom dnp)
 \t(fp_text reference "REF**" (at 0 -1.2) (layer "F.SilkS")
 \t\t(effects (font (size 0.8 0.8) (thickness 0.12)))
 \t)
-\t(fp_text value "C_0402" (at 0 1.2) (layer "F.Fab")
+\t(fp_text value "DNP" (at 0 1.2) (layer "F.Fab")
 \t\t(effects (font (size 0.6 0.6) (thickness 0.08)))
 \t)
 \t(fp_line (start -0.1 -0.35) (end 0.1 -0.35) (layer "F.Fab") (stroke (width 0.1) (type solid)))
@@ -754,17 +754,17 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#FLG01") (unit 1))))
 \t)
 \t(wire (pts (xy 83.82 78.74) (xy 81.28 78.74)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(label "LA" (at 81.28 78.74 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
+\t(global_label "LA" (shape input) (at 81.28 78.74 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
 \t(wire (pts (xy 116.84 80.01) (xy 114.3 80.01)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(label "LA" (at 114.3 80.01 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
+\t(global_label "LA" (shape input) (at 114.3 80.01 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
 \t(wire (pts (xy 106.68 72.39) (xy 106.68 74.93)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(label "LA" (at 106.68 74.93 270) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
+\t(global_label "LB" (shape input) (at 106.68 74.93 270) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
 \t(wire (pts (xy 93.98 78.74) (xy 96.52 78.74)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(label "LB" (at 96.52 78.74 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
+\t(global_label "LB" (shape input) (at 96.52 78.74 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
 \t(wire (pts (xy 137.16 80.01) (xy 139.7 80.01)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(label "LB" (at 139.7 80.01 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
+\t(global_label "LB" (shape input) (at 139.7 80.01 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
 \t(wire (pts (xy 106.68 64.77) (xy 106.68 62.23)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(label "LB" (at 106.68 62.23 90) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
+\t(global_label "LA" (shape input) (at 106.68 62.23 90) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
 \t(wire (pts (xy 116.84 82.55) (xy 116.84 93.98)) (stroke (width 0) (type default)) (uuid {uid()}))
 \t(wire (pts (xy 116.84 93.98) (xy 114.3 93.98)) (stroke (width 0) (type default)) (uuid {uid()}))
 \t(no_connect (at 116.84 85.09) (uuid {uid()}))
@@ -888,7 +888,15 @@ def build_u1_footprint(x: float, y: float) -> str:
 
 
 def build_ant_footprint(x: float, y: float, ant_pts: list[tuple[float, float]]) -> str:
-    """Spiral as copper graphics + pads 1/2 — declared net-tie so DRC allows LA↔LB path."""
+    """Net-tie junction at the coil inner end.
+
+    The spiral itself is drawn as netted F.Cu tracks (net LA) in write_pcb, so no
+    un-netted footprint copper exists and DRC is deterministic. This footprint only
+    bridges the coil end (pad 1, LA) to the LB feed take-off (pad 2, LB) via a
+    KiCad net-tie — pads need not touch, tied pads form one node.
+    """
+    end = ant_pts[-1]
+    take_off = (end[0] + 1.3, end[1])  # aligns with via_in / B.Cu underpass take-off
     pad_d = ANTENNA_FEED_PAD_D_MM
     parts = [
         '\t(footprint "NFC_BusinessCard:Antenna_Spiral_29x45_5T"',
@@ -898,38 +906,15 @@ def build_ant_footprint(x: float, y: float, ant_pts: list[tuple[float, float]]) 
         footprint_property("Reference", "ANT1", 0, 0, 0, "F.SilkS", hide=True, font_size=(0.8, 0.8), thickness=0.12),
         footprint_property("Value", "Antenna_NFC", 0, 0, 0, "F.Fab", hide=True, font_size=(0.8, 0.8), thickness=0.12),
         _fp_hidden_fields(),
-        # net-tie: continuous spiral intentionally bridges LA (pad 1) and LB (pad 2)
+        # net-tie: coil end (LA, pad 1) intentionally bridges to the LB feed (pad 2)
         '\t\t(attr board_only exclude_from_pos_files exclude_from_bom allow_missing_courtyard)',
         '\t\t(net_tie_pad_groups "1,2")',
         "\t\t(duplicate_pad_numbers_are_jumpers no)",
+        fp_pad_circle("1", end[0], end[1], net="LA", size=pad_d, pad_type="connect", layers='"F.Cu"'),
+        fp_pad_circle("2", take_off[0], take_off[1], net="LB", size=pad_d, pad_type="connect", layers='"F.Cu"'),
+        "\t\t(embedded_fonts no)",
+        "\t)",
     ]
-    for a, b in zip(ant_pts, ant_pts[1:]):
-        parts.append(fp_line(a[0], a[1], b[0], b[1], "F.Cu", width=TRACE_W))
-    parts.extend(
-        [
-            # connect pads: copper-only net-tie lands (matches RF_Antenna library practice)
-            fp_pad_circle(
-                "1",
-                ant_pts[0][0],
-                ant_pts[0][1],
-                net="LA",
-                size=pad_d,
-                pad_type="connect",
-                layers='"F.Cu"',
-            ),
-            fp_pad_circle(
-                "2",
-                ant_pts[-1][0],
-                ant_pts[-1][1],
-                net="LB",
-                size=pad_d,
-                pad_type="connect",
-                layers='"F.Cu"',
-            ),
-            "\t\t(embedded_fonts no)",
-            "\t)",
-        ]
-    )
     return "\n".join(parts) + "\n"
 
 
@@ -999,9 +984,12 @@ def build_c1_footprint(x: float, y: float) -> str:
         footprint_property("Reference", "C1", 0, -1.2, 0, "F.SilkS", hide=True, font_size=(0.6, 0.6), thickness=0.1),
         footprint_property("Value", "DNP", 0, 1.2, 0, "F.Fab", font_size=(0.5, 0.5), thickness=0.08),
         _fp_hidden_fields(),
-        "\t\t(attr smd exclude_from_pos_files dnp)",
+        footprint_property("LCSC Part #", "C158992", 0, 0, 0, "F.Fab", hide=True, font_size=(1.27, 1.27), thickness=0),
+        "\t\t(attr smd exclude_from_pos_files exclude_from_bom dnp)",
         "\t\t(duplicate_pad_numbers_are_jumpers no)",
         fp_rect(-1.0, -0.6, 1.0, 0.6, "F.CrtYd"),
+        fp_line(-0.1, -0.35, 0.1, -0.35, "F.Fab", width=0.1),
+        fp_line(-0.1, 0.35, 0.1, 0.35, "F.Fab", width=0.1),
         fp_pad_roundrect("1", -0.48, 0, 0, 0.52, 0.62, net="LA", rratio=0.15),
         fp_pad_roundrect("2", 0.48, 0, 0, 0.52, 0.62, net="LB", rratio=0.15),
         "\t\t(embedded_fonts no)",
@@ -1034,6 +1022,19 @@ def write_pcb() -> None:
     segments = feed_routes_sexpr(
         feed_routes(ant1_abs, ant2_abs, lay["u1"], lay["c1"]) + gnd_island_route(lay["u1"])
     )
+    # Spiral as netted F.Cu tracks (net LA) — no un-netted copper, deterministic DRC.
+    # Outer start (=ant1_abs) meets the LA feed; inner end (=ant2_abs) meets net-tie pad 1.
+    coil_segs = [
+        segment(
+            ant_cx + a[0],
+            ant_cy + a[1],
+            ant_cx + b[0],
+            ant_cy + b[1],
+            "LA",
+            width=TRACE_W,
+        )
+        for a, b in zip(ant_pts, ant_pts[1:])
+    ]
     vias = [via(x, y, net) for x, y, net in feed_vias(ant2_abs, lay["u1"])]
 
     content = "\n".join(
@@ -1058,6 +1059,7 @@ def write_pcb() -> None:
             gr_text("TEXT ZONE (no copper)", tw / 2, 4, "Dwgs.User"),
             gr_text("NFC", ant_cx, 4, "Dwgs.User"),
             *segments,
+            *coil_segs,
             *vias,
             "\t(embedded_fonts yes)",
             ")",
@@ -1069,7 +1071,8 @@ def write_pcb() -> None:
 
 def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
     pts = rectangular_spiral(0, 0, outer_w, outer_h, TURNS, TRACE_W, GAP)
-    p1, p2 = pts[0], pts[-1]
+    end = pts[-1]
+    take_off = (end[0] + 1.3, end[1])  # matches the board's B.Cu underpass take-off
     pad_d = ANTENNA_FEED_PAD_D_MM
     fp_name = f"Antenna_Spiral_{outer_w:.0f}x{outer_h:.0f}_{TURNS}T"
     lines = [
@@ -1077,7 +1080,7 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
         f'\t(version {PCB_FORMAT_VERSION})',
         '\t(generator "nfc_business_card")',
         '\t(layer "F.Cu")',
-        f'\t(descr "Rect spiral NFC antenna ~{outer_w:.0f}x{outer_h:.0f}mm {TURNS} turns {TRACE_W}/{GAP}; net-tie pads 1-2")',
+        f'\t(descr "Rect spiral NFC antenna ~{outer_w:.0f}x{outer_h:.0f}mm {TURNS} turns {TRACE_W}/{GAP}; net-tie pads 1-2 (spiral = board tracks net LA)")',
         '\t(tags "net tie nfc antenna spiral")',
         '\t(attr exclude_from_pos_files exclude_from_bom allow_missing_courtyard)',
         '\t(net_tie_pad_groups "1,2")',
@@ -1087,21 +1090,12 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
         '\t(fp_text value "Antenna" (at 0 0) (layer "F.Fab") (hide yes)',
         '\t\t(effects (font (size 1 1) (thickness 0.15)))',
         "\t)",
+        f'\t(pad "1" connect circle (at {end[0]:.4f} {end[1]:.4f}) (size {pad_d} {pad_d}) '
+        f'(layers "F.Cu") (uuid {uid()}))',
+        f'\t(pad "2" connect circle (at {take_off[0]:.4f} {take_off[1]:.4f}) (size {pad_d} {pad_d}) '
+        f'(layers "F.Cu") (uuid {uid()}))',
+        ")",
     ]
-    for a, b in zip(pts, pts[1:]):
-        lines.append(
-            f'\t(fp_line (start {a[0]:.4f} {a[1]:.4f}) (end {b[0]:.4f} {b[1]:.4f}) '
-            f'(layer "F.Cu") (stroke (width {TRACE_W}) (type solid)))'
-        )
-    lines.append(
-        f'\t(pad "1" connect circle (at {p1[0]:.4f} {p1[1]:.4f}) (size {pad_d} {pad_d}) '
-        f'(layers "F.Cu") (uuid {uid()}))'
-    )
-    lines.append(
-        f'\t(pad "2" connect circle (at {p2[0]:.4f} {p2[1]:.4f}) (size {pad_d} {pad_d}) '
-        f'(layers "F.Cu") (uuid {uid()}))'
-    )
-    lines.append(")")
     pretty = LIB / "footprints" / "NFC_BusinessCard.pretty"
     path = pretty / f"{fp_name}.kicad_mod"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

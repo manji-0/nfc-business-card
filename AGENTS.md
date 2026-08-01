@@ -133,7 +133,8 @@ KiCad 10 が `/Applications/KiCad/` に必要（氏名の TTF ベイク）。無
 - 螺旋がテキストゾーンに入らない
 - LA/LB フィードが短絡しない（FD 等 NC パッドへの貫通含む）
 - LB の F.Cu がアンテナ左辺を横切らない（内側終端は B.Cu アンダーパス）
-- アンテナ FP は net-tie（`net_tie_pad_groups "1,2"`）— 螺旋銅の LA↔LB は意図的
+- アンテナ螺旋は **net 付き F.Cu トラック（net LA）**、FP はコイル内側終端の **net-tie ジャンクション**（`net_tie_pad_groups "1,2"`、pad1=LA/pad2=LB）
+- **no-net 銅を置かない**（no-net fp_line 螺旋は DRC 結果が UUID 依存になり再生成ごとに揺れる）
 - XQFN 同一辺パッドの向き・間隔（サイドパッド長軸 = パッケージ中心方向）
 - 局所 GND 島がコンポーネント帯内にあり SCL / LA バイパスとクリア
 - 氏名右端マージン

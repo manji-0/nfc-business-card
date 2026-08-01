@@ -46,8 +46,11 @@ Rough L ≈ **1.9 µH** → f_res ≈ **16 MHz** with Cin=50 pF alone. First-art
 3. Place U1 and C1 pads at the feed gap; short LA/LB traces.
 4. VSS has a tiny local copper island left of U1 in the component strip — do not flood the antenna area.
 5. Center EP of XQFN-8: **no solder paste / no net** (datasheet).
-6. Antenna footprint is a **net-tie** (`net_tie_pad_groups "1,2"`): spiral copper intentionally bridges LA↔LB.
-   DRC must stay clean without excluding real shorts elsewhere (e.g. feed through FD).
+6. The spiral is **netted F.Cu tracks (net LA)**; the antenna footprint is only a
+   **net-tie junction** at the coil inner end (`net_tie_pad_groups "1,2"`: pad 1 = LA on the
+   coil end, pad 2 = LB at the B.Cu underpass take-off). No un-netted copper may exist —
+   un-netted spiral `fp_line` copper makes DRC shorting results **UUID-dependent**
+   (0/1/2 errors across regenerations). Keep every copper item netted.
 
 ## Verification after PCBA
 

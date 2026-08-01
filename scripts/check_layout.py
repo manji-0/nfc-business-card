@@ -70,9 +70,15 @@ else:
 ant1 = (lay["ant_cx"] + pts[0][0], lay["ant_cy"] + pts[0][1])
 ant2 = (lay["ant_cx"] + pts[-1][0], lay["ant_cy"] + pts[-1][1])
 routes = feed_routes(ant1, ant2, lay["u1"], lay["c1"])
-for i, a in enumerate(routes):
+# Spiral is now netted F.Cu tracks (net LA) — include them in the LA-vs-LB scan
+coil = [
+    (lay["ant_cx"] + a[0], lay["ant_cy"] + a[1], lay["ant_cx"] + b[0], lay["ant_cy"] + b[1], "LA", TRACE_W, "F.Cu")
+    for a, b in zip(pts, pts[1:])
+]
+all_segs = coil + routes
+for i, a in enumerate(all_segs):
     x0, y0, x1, y1, net_a, _w, layer_a = a
-    for j, b in enumerate(routes[i + 1 :], start=i + 1):
+    for j, b in enumerate(all_segs[i + 1 :], start=i + 1):
         x2, y2, x3, y3, net_b, _w2, layer_b = b
         if net_a == net_b or layer_a != layer_b:
             continue
@@ -192,11 +198,18 @@ elif GAP >= DESIGN_TRACE_CLEARANCE_MM:
 
 feed_clr = (ANTENNA_TRACE_W_MM + ANTENNA_GAP_MM) - ANTENNA_FEED_PAD_D_MM / 2 - ANTENNA_TRACE_W_MM / 2
 if feed_clr < JLC_MIN_TRACE_CLEARANCE_MM:
-    errors.append(f"Antenna feed pad clearance {feed_clr:.3f} mm < JLC min {JLC_MIN_TRACE_CLEARANCE_MM} mm")
+    errors.append(f"LB net-tie pad vs turn-5 clearance {feed_clr:.3f} mm < JLC min {JLC_MIN_TRACE_CLEARANCE_MM} mm")
 elif feed_clr < DESIGN_TRACE_CLEARANCE_MM - 1e-9:
-    warnings.append(f"Antenna feed pad clearance {feed_clr:.3f} mm below design target {DESIGN_TRACE_CLEARANCE_MM} mm")
+    warnings.append(f"LB net-tie pad vs turn-5 clearance {feed_clr:.3f} mm below design target {DESIGN_TRACE_CLEARANCE_MM} mm")
 else:
-    print(f"OK: antenna feed pad Ø{ANTENNA_FEED_PAD_D_MM} mm, clearance {feed_clr:.3f} mm")
+    print(f"OK: LB net-tie pad Ø{ANTENNA_FEED_PAD_D_MM} mm, turn-5 clearance {feed_clr:.3f} mm")
+
+# LB net-tie pad 2 sits 1.3 mm right of the coil lead-out (via_in take-off)
+leadout_clr = 1.3 - ANTENNA_FEED_PAD_D_MM / 2 - ANTENNA_TRACE_W_MM / 2
+if leadout_clr < DESIGN_TRACE_CLEARANCE_MM:
+    errors.append(f"LB net-tie pad vs coil lead-out clearance {leadout_clr:.3f} mm too tight")
+else:
+    print(f"OK: LB net-tie pad vs coil lead-out {leadout_clr:.2f} mm")
 
 print(f"OK: text zone width {TEXT_ZONE_W:.0f} mm (copper-free)")
 print(f"OK: antenna {lay['ant_w']:.1f}×{lay['ant_h']:.1f} mm, {TURNS} turns")
