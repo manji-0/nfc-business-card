@@ -28,7 +28,11 @@ from generate_kicad_project import (  # noqa: E402
     nc_terminator_placements,
     nc_terminator_routes,
     nfc_layout,
-    xqfn_pad_wh,
+)
+from xqfn_geometry import (  # noqa: E402
+    XQFN_PADS,
+    xqfn_pad_bbox,
+    xqfn_side_pad_gap,
 )
 from jlcpcb_limits import (  # noqa: E402
     ANT_TIE_TAKEOFF_DX_MM,
@@ -55,7 +59,6 @@ from jlcpcb_limits import (  # noqa: E402
     R0402_PAD_OFFSET_MM,
     XQFN_PAD_EDGE_MM,
     XQFN_PAD_ROW_MM,
-    XQFN_PITCH_MM,
 )
 from silk_layout import NAME_CAP_HEIGHT_MM, NAME_RIGHT_MARGIN_MM, NAME_X_MM, ROLES_Y0_MM, TEXT_ZONE_W  # noqa: E402
 from layout_metrics import name_ink_bounds_mm  # noqa: E402
@@ -160,26 +163,6 @@ else:
     print(f"OK: LA bypass x={la_bypass:.2f} mm (skirts left of U1)")
 
 # Feed traces must not hit NC pads (FD/SCL/SDA/VCC/VOUT) or wrong nets
-# Pad centres relative to U1; half-sizes after orientation
-xqfn_pads = {
-    "1": (-0.20, 0.75, 90, "LA"),
-    "2": (-0.75, 0.20, 0, "GND"),
-    "3": (-0.75, -0.20, 0, "SCL"),
-    "4": (-0.20, -0.75, 90, "FD"),
-    "5": (0.20, -0.75, 90, "SDA"),
-    "6": (0.75, -0.20, 0, "VCC"),
-    "7": (0.75, 0.20, 0, "VOUT"),
-    "8": (0.20, 0.75, 90, "LB"),
-}
-
-
-def pad_bbox(x: float, y: float, rot: float) -> tuple[float, float, float, float]:
-    pw, ph = xqfn_pad_wh(rot)
-    if int(rot) % 180 == 90:
-        hw, hh = ph / 2, pw / 2
-    else:
-        hw, hh = pw / 2, ph / 2
-    return x - hw, y - hh, x + hw, y + hh
 
 
 def rect_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
@@ -207,8 +190,8 @@ def seg_hits_rect(
     return False
 
 
-for num, (px, py, rot, pad_net) in xqfn_pads.items():
-    rect = pad_bbox(u1_x + px, u1_y + py, rot)
+for num, (px, py, rot, pad_net) in XQFN_PADS.items():
+    rect = xqfn_pad_bbox(u1_x + px, u1_y + py, rot)
     for x0, y0, x1, y1, net, w, layer in routes:
         if layer != "F.Cu":
             continue
@@ -305,7 +288,7 @@ else:
         )
     else:
         # Clearance to SCL (pad 3) — historical DRC hit with oversized island
-        scl = pad_bbox(u1_x - 0.75, u1_y - 0.20, 0)
+        scl = xqfn_pad_bbox(u1_x - 0.75, u1_y - 0.20, 0)
         island = (
             gnd_x - GND_ISLAND_W_MM / 2,
             gnd_y - GND_ISLAND_H_MM / 2,
@@ -356,7 +339,7 @@ else:
         warnings.append(f"Name may exceed text zone ({name_right:.1f} > {TEXT_ZONE_W - NAME_RIGHT_MARGIN_MM:.1f} mm)")
 
 # XQFN adjacent pads on the same side: short axis = ROW
-row_gap = XQFN_PITCH_MM - XQFN_PAD_ROW_MM
+row_gap = xqfn_side_pad_gap()
 if row_gap < JLC_MIN_MASK_BRIDGE_MM:
     errors.append(f"XQFN same-side pad gap {row_gap:.3f} mm < JLC min {JLC_MIN_MASK_BRIDGE_MM} mm")
 elif row_gap < DESIGN_MASK_BRIDGE_MM:
@@ -366,8 +349,10 @@ else:
 
 # Explicit side-pad bbox check (catches orientation regressions like 2↔3 overlap)
 for a, b in (("2", "3"), ("6", "7"), ("1", "8"), ("4", "5")):
-    ra = pad_bbox(u1_x + xqfn_pads[a][0], u1_y + xqfn_pads[a][1], xqfn_pads[a][2])
-    rb = pad_bbox(u1_x + xqfn_pads[b][0], u1_y + xqfn_pads[b][1], xqfn_pads[b][2])
+    ax, ay, arot, _anet = XQFN_PADS[a]
+    bx, by, brot, _bnet = XQFN_PADS[b]
+    ra = xqfn_pad_bbox(u1_x + ax, u1_y + ay, arot)
+    rb = xqfn_pad_bbox(u1_x + bx, u1_y + by, brot)
     # gap along the shared axis
     ax0, ay0, ax1, ay1 = ra
     bx0, by0, bx1, by1 = rb
@@ -378,10 +363,10 @@ for a, b in (("2", "3"), ("6", "7"), ("1", "8"), ("4", "5")):
         warnings.append(f"XQFN pads {a}/{b} gap {gap:.3f} mm (expected ~{row_gap:.3f})")
 
 
-p1 = pad_bbox(u1_x - 0.20, u1_y + 0.75, 90)
-p2 = pad_bbox(u1_x - 0.75, u1_y + 0.20, 0)
-p8 = pad_bbox(u1_x + 0.20, u1_y + 0.75, 90)
-p7 = pad_bbox(u1_x + 0.75, u1_y + 0.20, 0)
+p1 = xqfn_pad_bbox(u1_x - 0.20, u1_y + 0.75, 90)
+p2 = xqfn_pad_bbox(u1_x - 0.75, u1_y + 0.20, 0)
+p8 = xqfn_pad_bbox(u1_x + 0.20, u1_y + 0.75, 90)
+p7 = xqfn_pad_bbox(u1_x + 0.75, u1_y + 0.20, 0)
 corner_gap = min(rect_gap(p1, p2), rect_gap(p8, p7))
 if corner_gap < JLC_MIN_MASK_BRIDGE_MM:
     errors.append(f"XQFN corner pad gap {corner_gap:.3f} mm < JLC min {JLC_MIN_MASK_BRIDGE_MM} mm")
@@ -417,8 +402,8 @@ for item in nc_via_raw:
         gen_vias.append((vx, vy, vnet, size, drill))
 
 xqfn_pad_rects = []
-for num, (px, py, rot, pad_net) in xqfn_pads.items():
-    x0, y0, x1, y1 = pad_bbox(u1_x + px, u1_y + py, rot)
+for num, (px, py, rot, pad_net) in XQFN_PADS.items():
+    x0, y0, x1, y1 = xqfn_pad_bbox(u1_x + px, u1_y + py, rot)
     xqfn_pad_rects.append((x0, y0, x1, y1, pad_net, "F.Cu"))
 
 # LA/LB clearance allowlist only (0.15 mm bus). Crossings are never allowed.

@@ -39,8 +39,6 @@ from jlcpcb_limits import (
     NC_VIA_GND_DY_MM,
     NC_VIA_SIZE_MM,
     R0402_PAD_OFFSET_MM,
-    XQFN_PAD_EDGE_MM,
-    XQFN_PAD_ROW_MM,
 )
 from bake_name_enig import bake_name_enig_sexpr
 from kamae.boundary import require_existing_file
@@ -83,6 +81,7 @@ from silk_layout import (
     qr_size_mm,
     qr_top_y_mm,
 )
+from xqfn_geometry import XQFN_PADS, xqfn_pad_wh
 
 ROOT = Path(__file__).resolve().parents[1]
 LIB = ROOT / "lib"
@@ -641,32 +640,8 @@ def write_symbol_lib() -> None:
     )
 
 
-def xqfn_pad_wh(_rot_deg: float) -> tuple[float, float]:
-    """Return KiCad pad (width, height) before rotation.
-
-    Long axis toward package centre: size is always (EDGE, ROW). Top/bottom pads
-    use rot=90 so the long axis lands on Y; side pads use rot=0 (long on X).
-    """
-    return XQFN_PAD_EDGE_MM, XQFN_PAD_ROW_MM
-
-
 def write_xqfn_footprint() -> None:
     """XQFN-8 1.6x1.6 P0.4mm, no EP solder (NXP SOT902-3)."""
-    # Pad centers: 2 pads per side, pitch 0.4, body 1.6
-    # Pin 1 at top-left going counterclockwise (NXP XQFN8 convention used here):
-    # Top: 1(left), 8(right); Right: 7(top), 6(bot); Bottom: 5(right), 4(left); Left: 3(bot), 2(top)
-    # Actually NXP Fig.3 typically: pin1 LA top-left, CCW.
-    pads = {
-        # (num, x, y, rot_deg) — pad long axis toward package center
-        "1": (-0.20, 0.75, 90),   # top, left  -> LA
-        "8": (0.20, 0.75, 90),    # top, right -> LB
-        "7": (0.75, 0.20, 0),     # right, top -> VOUT
-        "6": (0.75, -0.20, 0),    # right, bot -> VCC
-        "5": (0.20, -0.75, 90),   # bot, right -> SDA
-        "4": (-0.20, -0.75, 90),  # bot, left  -> FD
-        "3": (-0.75, -0.20, 0),   # left, bot  -> SCL
-        "2": (-0.75, 0.20, 0),    # left, top  -> VSS
-    }
     lines = [
         '(footprint "XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111"',
         f'\t(version {PCB_FORMAT_VERSION})',
@@ -688,7 +663,7 @@ def write_xqfn_footprint() -> None:
         # Pin 1 marker
         '\t(fp_circle (center -0.55 0.55) (end -0.45 0.55) (layer "F.SilkS") (stroke (width 0.12) (type solid)) (fill none))',
     ]
-    for num, (x, y, rot) in pads.items():
+    for num, (x, y, rot, _net) in XQFN_PADS.items():
         pw, ph = xqfn_pad_wh(rot)
         lines.append(
             f'\t(pad "{num}" smd roundrect (at {x} {y} {rot}) (size {pw} {ph}) '
@@ -1399,14 +1374,12 @@ def build_u1_footprint(x: float, y: float) -> str:
         fp_circle(-0.55, 0.55, -0.45, 0.55, "F.SilkS"),
         fp_rect(-1.2, -1.2, 1.2, 1.2, "F.CrtYd"),
         fp_rect(-0.8, -0.8, 0.8, 0.8, "F.Fab", width=0.1),
-        fp_pad_roundrect("1", -0.2, 0.75, 90, *xqfn_pad_wh(90), net="LA"),
-        fp_pad_roundrect("2", -0.75, 0.2, 0, *xqfn_pad_wh(0), net="GND"),
-        fp_pad_roundrect("3", -0.75, -0.2, 0, *xqfn_pad_wh(0), net="SCL"),
-        fp_pad_roundrect("4", -0.2, -0.75, 90, *xqfn_pad_wh(90), net="FD"),
-        fp_pad_roundrect("5", 0.2, -0.75, 90, *xqfn_pad_wh(90), net="SDA"),
-        fp_pad_roundrect("6", 0.75, -0.2, 0, *xqfn_pad_wh(0), net="VCC"),
-        fp_pad_roundrect("7", 0.75, 0.2, 0, *xqfn_pad_wh(0), net="VOUT"),
-        fp_pad_roundrect("8", 0.2, 0.75, 90, *xqfn_pad_wh(90), net="LB"),
+    ]
+    # Numeric pad order (1..8) to keep regenerated PCB byte-stable.
+    for num in sorted(XQFN_PADS):
+        px, py, rot, net = XQFN_PADS[num]
+        parts.append(fp_pad_roundrect(num, px, py, rot, *xqfn_pad_wh(rot), net=net))
+    parts += [
         "\t\t(embedded_fonts no)",
         "\t)",
     ]
