@@ -69,9 +69,13 @@ NP0/C0G **only** — X7R capacitance drifts with voltage/temperature and will no
 | Ref | R2–R6 |
 | Footprint | R_0402_1005Metric (**B.Cu**) |
 | Value | **100 kΩ** → VSS (SCL, SDA, FD, VCC, VOUT) |
-| LCSC | **C25744** (100 kΩ 0402 1%) |
+| MPN | **RC0402FR-07100KL** (YAGEO) |
+| LCSC | **C60491** (100 kΩ 0402 ±1%, 62.5 mW) |
+| Verified | 2026-08-02 against JLCPCB / LCSC |
 | Default | **Do Not Place** |
 | Notes | Weak pull-down defines floating NC pins; no RF tuning impact. Populate if field reliability needs margin. |
+
+> **Obsolete/wrong ID (do not use):** C25744 — Uni-Royal 0402WGF1002TCE is **10 kΩ**, not 100 kΩ.
 
 ## Alternates (if C710403 unavailable at order time)
 

@@ -5,7 +5,8 @@ JLC_MIN_MASK_BRIDGE_MM = 0.10
 JLC_MIN_TRACE_WIDTH_MM = 0.127
 JLC_MIN_TRACE_CLEARANCE_MM = 0.127
 
-# Design targets — ~50% headroom over JLC minimum where practical
+# KiCad DRC uses JLC fab minimum; check_layout.py still warns below DESIGN target.
+KICAD_DRC_MIN_CLEARANCE_MM = JLC_MIN_TRACE_CLEARANCE_MM
 DESIGN_MASK_BRIDGE_MM = 0.15
 DESIGN_TRACE_CLEARANCE_MM = 0.20
 DESIGN_MIN_FEATURE_MM = 0.18
@@ -36,14 +37,26 @@ ANTENNA_FEED_PAD_D_MM = 0.45
 ANT_TIE_TAKEOFF_DX_MM = 1.3
 # ...and pad 2 runs down to via_in this far below the take-off y
 ANT_TIE_VIA_DY_MM = 0.75
-# Local VSS island left of U1 (clear of SCL pad 3 and LA bypass)
-GND_ISLAND_DX_MM = 1.7
-GND_ISLAND_W_MM = 0.55
-GND_ISLAND_H_MM = 0.40
+# Local VSS island west of U1 (clear of SCL pad 3 and LA bypass)
+GND_ISLAND_DX_MM = 1.95
+GND_ISLAND_DY_MM = 0.375
+GND_ISLAND_W_MM = 0.50
+GND_ISLAND_H_MM = 0.35
+# LB B.Cu underpass exit via (east of U1, clear of the NC fan-out vias)
+FEED_VIA_OUT_DX_MM = 2.6
+FEED_LB_JOIN_DX_MM = 0.38  # LB layer-change via east of la_x vertical (pad 1 bus)
 
 # NC pin weak pull-downs to VSS (B.Cu DNP 0402)
 NC_TERM_R_KOHM = 100
-NC_TERM_R_LCSC = "C25744"  # 100 kΩ 0402 1%
+NC_TERM_R_LCSC = "C60491"  # YAGEO RC0402FR-07100KL 100 kΩ 0402 ±1% (verified 2026-08-02)
+# Obsolete/wrong: C25744 = Uni-Royal 0402WGF1002TCE = 10 kΩ, not 100 kΩ.
 R0402_PAD_OFFSET_MM = 0.48
-NC_TERM_R_OFFSET_MM = 0.85  # resistor center west of U1 NC pad
-NC_TERM_GND_BUS_INSET_MM = 0.25  # B.Cu GND bus left of island edge
+NC_TERM_R_OFFSET_MM = 0.85  # legacy — replaced by NC_R_COL_DX_MM column layout
+NC_TERM_GND_BUS_INSET_MM = 0.85  # B.Cu GND bus west of R pad 2 (room for NC channels east of bus)
+# NC fan-out vias: Ø0.5 cannot sit on a 0.18 mm-wide pad at 0.4 mm pitch,
+# so each net leaves U1 via an F.Cu stub; vias stay ≥ 0.7 mm apart.
+NC_VIA_SIZE_MM = 0.5
+NC_VIA_DRILL_MM = 0.3
+NC_R_COL_DX_MM = -1.8  # DNP resistor column centre relative to U1 (east → more B.Cu channel room)
+NC_BELOW_LA_Y_MM = -1.48  # u1_y + this — legacy ref for docs
+NC_VIA_GND_DY_MM = 0.275  # GND bus→island via offset above the top R row
