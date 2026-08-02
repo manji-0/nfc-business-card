@@ -7,7 +7,7 @@ Passive NFC PCB business card: **89 × 51 mm**, URL NDEF, rewritable from iPhone
 | IC | NXP **NT3H2111W0FHKH** (Type 2 / NTAG I²C plus) |
 | LCSC | **C710403** (JLCPCB Extended, SMT) |
 | Board | 2-layer, **0.8 mm**, **black** mask, white silk, ENIG |
-| Antenna | Right zone ~29.5 × 46 mm, **6 turns**, 0.25 / 0.25 mm |
+| Antenna | Right zone ~29 × 45 mm, **5 turns**, 0.25 / 0.30 mm |
 | Text zone | Left **50 mm** — name as **ENIG copper**; roles / QR / contacts in silk |
 | Components | 7 mm strip between text and antenna (U1 + C1 DNP) |
 
