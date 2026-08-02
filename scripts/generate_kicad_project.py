@@ -19,6 +19,9 @@ from jlcpcb_limits import (
     FEED_LA_BYPASS_DX_MM,
     FEED_TRACE_W_MM,
     FEED_VIA_OUT_DX_MM,
+    FEED_VIA_OUT_DY_MM,
+    FEED_VIA_SIZE_MM,
+    FEED_VIA_DRILL_MM,
     FEED_LB_JOIN_DX_MM,
     GND_ISLAND_DX_MM,
     GND_ISLAND_DY_MM,
@@ -99,14 +102,10 @@ NC_TERMINATORS: tuple[tuple[str, str, float, float], ...] = (
     ("R5", "VCC", 0.75, -0.20),
     ("R6", "VOUT", 0.75, 0.20),
 )
-# NC fan-out: short F.Cu stub → via → B.Cu channel → DNP R pad 1.
-# Columns west→east / rows north→south so HV routes on B.Cu never cross.
-# VOUT/VCC use only a short eastward F.Cu stub (no north run through LA/LB).
-# Stub width is NC_STUB_NARROW_W_MM where pads sit on 0.4 mm pitch.
 # NC fan-out: short F.Cu stub → via → B.Cu (jog to col) → south → R pad 1.
-# Four signal columns sit west of the LB C1-underpass; VOUT uses an east column
-# between lb_join and via_out so HV routes do not cross. Rows north→south match
-# column west→east ordering.
+# Columns west→east / rows north→south so HV routes on B.Cu never cross.
+# VOUT enters via a north B.Cu lane (above other NC vias) then joins the
+# easternmost west-channel column.
 NC_FANOUT: dict[str, dict] = {
     "SCL": {
         "pad": (-0.75, -0.20),
@@ -136,17 +135,18 @@ NC_FANOUT: dict[str, dict] = {
         "pad": (0.75, -0.20),
         "stub": [(0.75, -0.20), (1.70, -0.20), (1.70, -1.20)],
         "via": (1.70, -1.20),
-        "col": 0.00,  # abs 53.50
+        "col": 0.10,  # abs 53.60
         "row": 8.40,
         "narrow": True,
     },
     "VOUT": {
         "pad": (0.75, 0.20),
-        "stub": [(0.75, 0.20), (2.50, 0.20), (2.50, -0.50)],
-        "via": (2.50, -0.50),
-        "col": 2.50,  # abs 56.00 — between lb_join and via_out
+        "stub": [(0.75, 0.20), (2.30, 0.20), (2.30, -0.05)],
+        "via": (2.30, -0.05),
+        "col": 2.30,  # abs 55.80
         "row": 9.60,
         "narrow": True,
+        "bc_via_y": -2.80,  # north jog lane above other NC vias
     },
 }
 # Stable root schematic UUID — reused in .kicad_pro sheets and symbol instance paths.
@@ -240,8 +240,7 @@ def feed_routes(
     w = FEED_TRACE_W
     # Inner via: step into spiral hollow; outer via: component strip east of U1
     via_in = (ant2_abs[0] + ANT_TIE_TAKEOFF_DX_MM, ant2_abs[1] + ANT_TIE_VIA_DY_MM)
-    via_out = (u1_x + FEED_VIA_OUT_DX_MM, pad_y)
-    lb_join = lb_x + FEED_LB_JOIN_DX_MM
+    via_out = (u1_x + FEED_VIA_OUT_DX_MM, pad_y + FEED_VIA_OUT_DY_MM)
     return [
         # LA: no y=feed_la_y bus through U1 — rise at feed, skirt above LB, drop to pad 1.
         (ant1_abs[0], ant1_abs[1], ant1_abs[0], la_skirt_y, "LA", w, "F.Cu"),
@@ -250,14 +249,14 @@ def feed_routes(
         # LA from C1 (above chip — la_x vertical is clear of FD)
         (c1_la[0], c1_la[1], la_x, c1_la[1], "LA", w, "F.Cu"),
         (la_x, c1_la[1], la_x, pad_y, "LA", w, "F.Cu"),
-        # LB: B.Cu underpass from via_in (net-tie pad 2 covers take-off→via) → pad 8
+        # LB: B.Cu underpass from via_in → via_out (south of LA skirt), then to pad 8
         (via_in[0], via_in[1], via_out[0], via_in[1], "LB", w, "B.Cu"),
         (via_out[0], via_in[1], via_out[0], via_out[1], "LB", w, "B.Cu"),
-        (via_out[0], via_out[1], lb_x, pad_y, "LB", w, "F.Cu"),
-        (lb_x, pad_y, lb_join, pad_y, "LB", w, "F.Cu"),
-        # LB from C1 — B.Cu under LA skirt; layer change east of la_x vertical
-        (c1_lb[0], c1_lb[1], lb_join, c1_lb[1], "LB", w, "B.Cu"),
-        (lb_join, c1_lb[1], lb_join, pad_y, "LB", w, "B.Cu"),
+        (via_out[0], via_out[1], lb_x, via_out[1], "LB", w, "F.Cu"),
+        (lb_x, via_out[1], lb_x, pad_y, "LB", w, "F.Cu"),
+        # LB from C1 on F.Cu (same layer as LA/LB buses; 0.15 mm gap is design warning)
+        (c1_lb[0], c1_lb[1], lb_x, c1_lb[1], "LB", w, "F.Cu"),
+        (lb_x, c1_lb[1], lb_x, pad_y, "LB", w, "F.Cu"),
     ]
 
 
@@ -266,19 +265,14 @@ def feed_vias(
     u1: tuple[float, float],
     c1: tuple[float, float],
 ) -> list[tuple[float, float, str]]:
-    """Vias for the LB underpass (inner hollow + component strip) and C1/U1 LB join."""
+    """Vias for the LB underpass (inner hollow + component strip)."""
     u1_x, u1_y = u1
-    c1_x, c1_y = c1
     pad_y = u1_y + 0.75
-    lb_x = u1_x + FEED_BUS_HALF_PITCH_MM
-    lb_join = lb_x + FEED_LB_JOIN_DX_MM
     via_in = (ant2_abs[0] + ANT_TIE_TAKEOFF_DX_MM, ant2_abs[1] + ANT_TIE_VIA_DY_MM)
-    via_out = (u1_x + FEED_VIA_OUT_DX_MM, pad_y)
+    via_out = (u1_x + FEED_VIA_OUT_DX_MM, pad_y + FEED_VIA_OUT_DY_MM)
     return [
         (via_in[0], via_in[1], "LB"),
         (via_out[0], via_out[1], "LB"),
-        (lb_join, pad_y, "LB"),
-        (c1_x + 0.48, c1_y, "LB"),
     ]
 
 
@@ -339,13 +333,17 @@ def nc_terminator_routes(
         vias.append((vx, vy, net, NC_VIA_SIZE_MM, NC_VIA_DRILL_MM))
         stub = [(u1_x + x, u1_y + y) for x, y in f["stub"]]
         segs += [(*a, *b, net, stub_w, "F.Cu") for a, b in zip(stub, stub[1:])]
-        # B.Cu: jog to column at via_y (north of LB corridor), south, then to pad 1
-        if abs(vx - col_x) > 1e-9:
-            segs.append((vx, vy, col_x, vy, net, w, "B.Cu"))
-        segs += [
-            (col_x, vy, col_x, rcy, net, w, "B.Cu"),
-            (col_x, rcy, pad1_x, rcy, net, w, "B.Cu"),
-        ]
+        # B.Cu: optional north jog into a clear lane, then to column, south, to pad 1
+        bc_pts = [(vx, vy)]
+        if "bc_via_y" in f:
+            lane_y = u1_y + f["bc_via_y"]
+            bc_pts.append((vx, lane_y))
+            bc_pts.append((col_x, lane_y))
+        elif abs(vx - col_x) > 1e-9:
+            bc_pts.append((col_x, vy))
+        bc_pts.append((col_x, rcy))
+        bc_pts.append((pad1_x, rcy))
+        segs += [(*a, *b, net, w, "B.Cu") for a, b in zip(bc_pts, bc_pts[1:])]
         rows.append(rcy)
 
     if rows:
@@ -1422,7 +1420,10 @@ def write_pcb() -> None:
         )
         for a, b in zip(ant_pts, ant_pts[1:])
     ]
-    vias = [via(x, y, net) for x, y, net in feed_vias(ant2_abs, lay["u1"], lay["c1"])]
+    vias = [
+        via(x, y, net, size=FEED_VIA_SIZE_MM, drill=FEED_VIA_DRILL_MM)
+        for x, y, net in feed_vias(ant2_abs, lay["u1"], lay["c1"])
+    ]
     vias += [via(x, y, net, size=sz, drill=dr) for x, y, net, sz, dr in nc_vias]
 
     r_fps = [

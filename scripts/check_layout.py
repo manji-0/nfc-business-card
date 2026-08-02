@@ -13,7 +13,6 @@ from card_copy import NAME  # noqa: E402
 from copper_checks import (  # noqa: E402
     check_geometry,
     check_pcb_file,
-    known_crossing_pairs,
 )
 from generate_kicad_project import (  # noqa: E402
     BOARD_H,
@@ -24,6 +23,7 @@ from generate_kicad_project import (  # noqa: E402
     TURNS,
     NC_TERMINATORS,
     feed_routes,
+    feed_vias,
     gnd_island_route,
     nc_terminator_placements,
     nc_terminator_routes,
@@ -41,6 +41,8 @@ from jlcpcb_limits import (  # noqa: E402
     FEED_BUS_HALF_PITCH_MM,
     FEED_LA_BYPASS_DX_MM,
     FEED_TRACE_W_MM,
+    FEED_VIA_DRILL_MM,
+    FEED_VIA_SIZE_MM,
     GND_ISLAND_DX_MM,
     GND_ISLAND_H_MM,
     GND_ISLAND_W_MM,
@@ -387,7 +389,10 @@ for rel in [
 nc_segs, nc_via_raw = nc_terminator_routes(lay["u1"])
 gnd_segs = gnd_island_route(lay["u1"])
 gen_segs = coil + list(routes) + list(nc_segs) + list(gnd_segs)
-gen_vias: list[tuple[float, float, str, float, float]] = []
+gen_vias: list[tuple[float, float, str, float, float]] = [
+    (vx, vy, vnet, FEED_VIA_SIZE_MM, FEED_VIA_DRILL_MM)
+    for vx, vy, vnet in feed_vias(ant2, lay["u1"], lay["c1"])
+]
 for item in nc_via_raw:
     if len(item) == 3:
         vx, vy, vnet = item
@@ -440,12 +445,6 @@ if pcb_path.is_file():
     if pcb_result.kind == "err":
         for issue in pcb_result.error:
             errors.append(f"copper(pcb) [{issue.kind}] {issue.message}")
-        pairs = known_crossing_pairs(pcb_result.error)
-        required = {("LA", "VOUT"), ("GND", "VOUT")}
-        if not required.issubset(pairs) and not pairs:
-            errors.append(
-                f"copper(pcb) failed to detect expected crossings {sorted(required)}"
-            )
     else:
         print("OK: PCB copper — no cross-net crossings, design clearance ≥ 0.20 mm")
 

@@ -43,8 +43,11 @@ GND_ISLAND_DY_MM = 0.375
 GND_ISLAND_W_MM = 0.50
 GND_ISLAND_H_MM = 0.35
 # LB B.Cu underpass exit via (east of U1, clear of the NC fan-out vias)
-FEED_VIA_OUT_DX_MM = 3.0  # LB underpass exit via (east of U1)
-FEED_LB_JOIN_DX_MM = 1.80  # LB layer-change via east of la_x (opens west NC channel)
+FEED_VIA_OUT_DX_MM = 2.9  # LB underpass exit via x offset from U1
+FEED_VIA_OUT_DY_MM = 1.45  # south of pad_y so Ø0.5 clears LA skirt at pad_y+0.65
+FEED_LB_JOIN_DX_MM = 1.80  # legacy — C1 LB now stays on F.Cu
+FEED_VIA_SIZE_MM = 0.5
+FEED_VIA_DRILL_MM = 0.3
 
 # NC pin weak pull-downs to VSS (B.Cu DNP 0402)
 NC_TERM_R_KOHM = 100
