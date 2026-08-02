@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-import math
 import uuid
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -38,9 +38,8 @@ from jlcpcb_limits import (
     NC_VIA_GND_DY_MM,
     NC_VIA_SIZE_MM,
     R0402_PAD_OFFSET_MM,
-    XQFN_PAD_EDGE_MM,
-    XQFN_PAD_ROW_MM,
 )
+from antenna_model import estimate_l_uh, f_res_mhz, rectangular_spiral
 from bake_name_enig import bake_name_enig_sexpr
 from kamae.boundary import require_existing_file
 from kamae.result import Err, unwrap
@@ -64,6 +63,7 @@ from kicad10 import (
     via,
 )
 from kicad_bitmap import bitmap_sexpr, bitmap_sexpr_rgba
+from symbol_lib import symbol_bodies, symbol_bodies_embedded
 from silk_layout import (
     BOARD_H,
     BOARD_W,
@@ -82,6 +82,7 @@ from silk_layout import (
     qr_size_mm,
     qr_top_y_mm,
 )
+from xqfn_geometry import XQFN_PADS, xqfn_pad_wh
 
 ROOT = Path(__file__).resolve().parents[1]
 LIB = ROOT / "lib"
@@ -97,59 +98,86 @@ TURNS = 5  # ~1.9–2.1 µH → ~15–16 MHz with 50 pF alone; C1 DNP for first-
 C1_LCSC = "C301961"  # Walsin 0402N100J500CT 10 pF NP0 — primary tuning cap
 FEED_TRACE_W = FEED_TRACE_W_MM
 # NC pins terminated to VSS via DNP 100 kΩ on B.Cu (R2–R6)
-NC_TERMINATORS: tuple[tuple[str, str, float, float], ...] = (
-    ("R2", "SCL", -0.75, -0.20),
-    ("R4", "FD", -0.20, -0.75),
-    ("R3", "SDA", 0.20, -0.75),
-    ("R5", "VCC", 0.75, -0.20),
-    ("R6", "VOUT", 0.75, 0.20),
+
+
+@dataclass(frozen=True, slots=True)
+class NcTerminator:
+    """One DNP pull-down resistor: reference, NC net, U1-relative pad offset."""
+
+    ref: str
+    net: str
+    pad_dx: float
+    pad_dy: float
+
+
+@dataclass(frozen=True, slots=True)
+class NcFanout:
+    """Per-net NC fan-out: F.Cu stub → via → B.Cu jog to column → south row.
+
+    Columns west→east / rows north→south so HV routes on B.Cu never cross.
+    """
+
+    pad: tuple[float, float]
+    stub: tuple[tuple[float, float], ...]
+    via: tuple[float, float]
+    col: float
+    row: float
+    narrow: bool = False
+    bc_via_y: float | None = None
+
+
+NC_TERMINATORS: tuple[NcTerminator, ...] = (
+    NcTerminator("R2", "SCL", -0.75, -0.20),
+    NcTerminator("R4", "FD", -0.20, -0.75),
+    NcTerminator("R3", "SDA", 0.20, -0.75),
+    NcTerminator("R5", "VCC", 0.75, -0.20),
+    NcTerminator("R6", "VOUT", 0.75, 0.20),
 )
 # NC fan-out: short F.Cu stub → via → B.Cu (jog to col) → south → R pad 1.
-# Columns west→east / rows north→south so HV routes on B.Cu never cross.
 # VOUT enters via a north B.Cu lane (above other NC vias) then joins the
 # easternmost west-channel column.
-NC_FANOUT: dict[str, dict] = {
-    "SCL": {
-        "pad": (-0.75, -0.20),
-        "stub": [(-0.75, -0.20), (-2.00, -0.20), (-2.00, -0.85)],
-        "via": (-2.00, -0.85),
-        "col": -2.00,  # abs 51.50
-        "row": 4.80,
-        "narrow": True,
-    },
-    "FD": {
-        "pad": (-0.20, -0.75),
-        "stub": [(-0.20, -0.75), (-1.30, -0.75), (-1.30, -1.55)],
-        "via": (-1.30, -1.55),
-        "col": -1.30,  # abs 52.20
-        "row": 6.00,
-        "narrow": True,
-    },
-    "SDA": {
-        "pad": (0.20, -0.75),
-        "stub": [(0.20, -0.75), (1.05, -0.75), (1.05, -2.25)],
-        "via": (1.05, -2.25),
-        "col": -0.60,  # abs 52.90
-        "row": 7.20,
-        "narrow": True,
-    },
-    "VCC": {
-        "pad": (0.75, -0.20),
-        "stub": [(0.75, -0.20), (1.70, -0.20), (1.70, -1.20)],
-        "via": (1.70, -1.20),
-        "col": 0.10,  # abs 53.60
-        "row": 8.40,
-        "narrow": True,
-    },
-    "VOUT": {
-        "pad": (0.75, 0.20),
-        "stub": [(0.75, 0.20), (2.30, 0.20), (2.30, -0.05)],
-        "via": (2.30, -0.05),
-        "col": 2.30,  # abs 55.80
-        "row": 9.60,
-        "narrow": True,
-        "bc_via_y": -2.80,  # north jog lane above other NC vias
-    },
+NC_FANOUT: dict[str, NcFanout] = {
+    "SCL": NcFanout(
+        pad=(-0.75, -0.20),
+        stub=((-0.75, -0.20), (-2.00, -0.20), (-2.00, -0.85)),
+        via=(-2.00, -0.85),
+        col=-2.00,  # abs 51.50
+        row=4.80,
+        narrow=True,
+    ),
+    "FD": NcFanout(
+        pad=(-0.20, -0.75),
+        stub=((-0.20, -0.75), (-1.30, -0.75), (-1.30, -1.55)),
+        via=(-1.30, -1.55),
+        col=-1.30,  # abs 52.20
+        row=6.00,
+        narrow=True,
+    ),
+    "SDA": NcFanout(
+        pad=(0.20, -0.75),
+        stub=((0.20, -0.75), (1.05, -0.75), (1.05, -2.25)),
+        via=(1.05, -2.25),
+        col=-0.60,  # abs 52.90
+        row=7.20,
+        narrow=True,
+    ),
+    "VCC": NcFanout(
+        pad=(0.75, -0.20),
+        stub=((0.75, -0.20), (1.70, -0.20), (1.70, -1.20)),
+        via=(1.70, -1.20),
+        col=0.10,  # abs 53.60
+        row=8.40,
+        narrow=True,
+    ),
+    "VOUT": NcFanout(
+        pad=(0.75, 0.20),
+        stub=((0.75, 0.20), (2.30, 0.20), (2.30, -0.05)),
+        via=(2.30, -0.05),
+        col=2.30,  # abs 55.80
+        row=9.60,
+        narrow=True,
+        bc_via_y=-2.80,  # north jog lane above other NC vias
+    ),
 }
 # Stable root schematic UUID — reused in .kicad_pro sheets and symbol instance paths.
 SCHEMATIC_ROOT_UUID = "db0e1d12-1252-490b-9c29-4e9a9001ab69"
@@ -317,14 +345,14 @@ def nc_terminator_placements(
     rcx = u1_x + NC_R_COL_DX_MM
     return [
         (
-            ref,
-            net,
+            term.ref,
+            term.net,
             rcx,
-            u1_y + NC_FANOUT[net]["row"],
-            u1_x + NC_FANOUT[net]["pad"][0],
-            u1_y + NC_FANOUT[net]["pad"][1],
+            u1_y + NC_FANOUT[term.net].row,
+            u1_x + NC_FANOUT[term.net].pad[0],
+            u1_y + NC_FANOUT[term.net].pad[1],
         )
-        for ref, net, _dx, _dy in NC_TERMINATORS
+        for term in NC_TERMINATORS
     ]
 
 
@@ -347,20 +375,21 @@ def nc_terminator_routes(
     vias: list[tuple[float, float, str, float, float]] = []
     rows: list[float] = []
 
-    for _ref, net, _dx, _dy in NC_TERMINATORS:
+    for term in NC_TERMINATORS:
+        net = term.net
         f = NC_FANOUT[net]
-        vx, vy = u1_x + f["via"][0], u1_y + f["via"][1]
-        col_x = u1_x + f["col"]
-        rcy = u1_y + f["row"]
-        stub_w = wn if f.get("narrow") else w
+        vx, vy = u1_x + f.via[0], u1_y + f.via[1]
+        col_x = u1_x + f.col
+        rcy = u1_y + f.row
+        stub_w = wn if f.narrow else w
         vias.append((vx, vy, net, NC_VIA_SIZE_MM, NC_VIA_DRILL_MM))
-        stub = [(u1_x + x, u1_y + y) for x, y in f["stub"]]
+        stub = [(u1_x + x, u1_y + y) for x, y in f.stub]
         segs += [(*a, *b, net, stub_w, "F.Cu") for a, b in zip(stub, stub[1:])]
         # B.Cu: optional north jog into a clear lane, then to column, south, to pad 1.
         # Skip duplicate points (e.g. VOUT via.x == col.x) to avoid zero-length tracks.
         bc_pts = [(vx, vy)]
-        if "bc_via_y" in f:
-            lane_y = u1_y + f["bc_via_y"]
+        if f.bc_via_y is not None:
+            lane_y = u1_y + f.bc_via_y
             bc_pts.append((vx, lane_y))
             if abs(col_x - vx) > 1e-9:
                 bc_pts.append((col_x, lane_y))
@@ -406,238 +435,18 @@ def ensure_dirs() -> None:
 def write_symbol_lib() -> None:
     path = LIB / "symbols" / "NFC_BusinessCard.kicad_sym"
     path.write_text(
-        f"""(kicad_symbol_lib
-\t(version 20231120)
-\t(generator "nfc_business_card")
-\t(generator_version "1.0")
-\t(symbol "NT3H2111W0FHKH"
-\t\t(pin_names (offset 1.016))
-\t\t(exclude_from_sim no)
-\t\t(in_bom yes)
-\t\t(on_board yes)
-\t\t(property "Reference" "U"
-\t\t\t(at 0 8.89 0)
-\t\t\t(effects (font (size 1.27 1.27)))
-\t\t)
-\t\t(property "Value" "NT3H2111W0FHKH"
-\t\t\t(at 0 -8.89 0)
-\t\t\t(effects (font (size 1.27 1.27)))
-\t\t)
-\t\t(property "Footprint" "NFC_BusinessCard:XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111"
-\t\t\t(at 0 0 0)
-\t\t\t(effects (font (size 1.27 1.27)) (hide yes))
-\t\t)
-\t\t(property "Datasheet" "https://www.nxp.com/docs/en/data-sheet/NT3H2111_2211.pdf"
-\t\t\t(at 0 0 0)
-\t\t\t(effects (font (size 1.27 1.27)) (hide yes))
-\t\t)
-\t\t(property "Description" "NTAG I2C plus Type 2 Tag, 1kB, 50pF"
-\t\t\t(at 0 0 0)
-\t\t\t(effects (font (size 1.27 1.27)) (hide yes))
-\t\t)
-\t\t(property "LCSC Part #" "C710403"
-\t\t\t(at 0 0 0)
-\t\t\t(effects (font (size 1.27 1.27)) (hide yes))
-\t\t)
-\t\t(property "ki_keywords" "NFC NTAG Type2"
-\t\t\t(at 0 0 0)
-\t\t\t(effects (font (size 1.27 1.27)) (hide yes))
-\t\t)
-\t\t(symbol "NT3H2111W0FHKH_0_1"
-\t\t\t(rectangle
-\t\t\t\t(start -7.62 7.62)
-\t\t\t\t(end 7.62 -7.62)
-\t\t\t\t(stroke (width 0.254) (type default))
-\t\t\t\t(fill (type background))
-\t\t\t)
-\t\t)
-\t\t(symbol "NT3H2111W0FHKH_1_1"
-\t\t\t(pin passive line (at -10.16 5.08 0) (length 2.54)
-\t\t\t\t(name "LA" (effects (font (size 1.27 1.27))))
-\t\t\t\t(number "1" (effects (font (size 1.27 1.27))))
-\t\t\t)
-\t\t\t(pin passive line (at -10.16 2.54 0) (length 2.54)
-\t\t\t\t(name "VSS" (effects (font (size 1.27 1.27))))
-\t\t\t\t(number "2" (effects (font (size 1.27 1.27))))
-\t\t\t)
-\t\t\t(pin passive line (at -10.16 0 0) (length 2.54)
-\t\t\t\t(name "SCL" (effects (font (size 1.27 1.27))))
-\t\t\t\t(number "3" (effects (font (size 1.27 1.27))))
-\t\t\t)
-\t\t\t(pin passive line (at -10.16 -2.54 0) (length 2.54)
-\t\t\t\t(name "FD" (effects (font (size 1.27 1.27))))
-\t\t\t\t(number "4" (effects (font (size 1.27 1.27))))
-\t\t\t)
-\t\t\t(pin passive line (at 10.16 -2.54 180) (length 2.54)
-\t\t\t\t(name "SDA" (effects (font (size 1.27 1.27))))
-\t\t\t\t(number "5" (effects (font (size 1.27 1.27))))
-\t\t\t)
-\t\t\t(pin passive line (at 10.16 0 180) (length 2.54)
-\t\t\t\t(name "VCC" (effects (font (size 1.27 1.27))))
-\t\t\t\t(number "6" (effects (font (size 1.27 1.27))))
-\t\t\t)
-\t\t\t(pin passive line (at 10.16 2.54 180) (length 2.54)
-\t\t\t\t(name "VOUT" (effects (font (size 1.27 1.27))))
-\t\t\t\t(number "7" (effects (font (size 1.27 1.27))))
-\t\t\t)
-\t\t\t(pin passive line (at 10.16 5.08 180) (length 2.54)
-\t\t\t\t(name "LB" (effects (font (size 1.27 1.27))))
-\t\t\t\t(number "8" (effects (font (size 1.27 1.27))))
-\t\t\t)
-\t\t)
-\t)
-\t(symbol "Antenna_NFC"
-\t\t(pin_names (offset 1.016))
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board yes)
-\t\t(property "Reference" "ANT"
-\t\t\t(at 0 5.08 0)
-\t\t\t(effects (font (size 1.27 1.27)))
-\t\t)
-\t\t(property "Value" "Antenna_NFC"
-\t\t\t(at 0 -5.08 0)
-\t\t\t(effects (font (size 1.27 1.27)))
-\t\t)
-\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_29x45_5T"
-\t\t\t(at 0 0 0)
-\t\t\t(effects (font (size 1.27 1.27)) (hide yes))
-\t\t)
-\t\t(property "Datasheet" "~"
-\t\t\t(at 0 0 0)
-\t\t\t(effects (font (size 1.27 1.27)) (hide yes))
-\t\t)
-\t\t(property "Description" "PCB spiral NFC antenna net-tie"
-\t\t\t(at 0 0 0)
-\t\t\t(effects (font (size 1.27 1.27)) (hide yes))
-\t\t)
-\t\t(symbol "Antenna_NFC_0_1"
-\t\t\t(arc
-\t\t\t\t(start -2.54 0)
-\t\t\t\t(mid 0 2.54)
-\t\t\t\t(end 2.54 0)
-\t\t\t\t(stroke (width 0) (type default))
-\t\t\t\t(fill (type none))
-\t\t\t)
-\t\t\t(arc
-\t\t\t\t(start -1.27 0)
-\t\t\t\t(mid 0 1.27)
-\t\t\t\t(end 1.27 0)
-\t\t\t\t(stroke (width 0) (type default))
-\t\t\t\t(fill (type none))
-\t\t\t)
-\t\t)
-\t\t(symbol "Antenna_NFC_1_1"
-\t\t\t(pin passive line (at -5.08 0 0) (length 2.54)
-\t\t\t\t(name "1" (effects (font (size 1.27 1.27))))
-\t\t\t\t(number "1" (effects (font (size 1.27 1.27))))
-\t\t\t)
-\t\t\t(pin passive line (at 5.08 0 180) (length 2.54)
-\t\t\t\t(name "2" (effects (font (size 1.27 1.27))))
-\t\t\t\t(number "2" (effects (font (size 1.27 1.27))))
-\t\t\t)
-\t\t)
-\t)
-\t(symbol "C_0402"
-\t\t(pin_numbers (hide yes))
-\t\t(pin_names (offset 0.254))
-\t\t(exclude_from_sim no)
-\t\t(in_bom yes)
-\t\t(on_board yes)
-\t\t(property "Reference" "C" (at 0.635 2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Value" "C_0402" (at 0.635 -2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Footprint" "NFC_BusinessCard:C_0402_1005Metric" (at 0.9652 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(symbol "C_0402_0_1"
-\t\t\t(polyline (pts (xy -2.032 -0.762) (xy 2.032 -0.762)) (stroke (width 0.508) (type default)) (fill (type none)))
-\t\t\t(polyline (pts (xy -2.032 0.762) (xy 2.032 0.762)) (stroke (width 0.508) (type default)) (fill (type none)))
-\t\t)
-\t\t(symbol "C_0402_1_1"
-\t\t\t(pin passive line (at 0 3.81 270) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t(pin passive line (at 0 -3.81 90) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
-\t\t)
-\t)
-\t(symbol "GND"
-\t\t(power)
-\t\t(pin_numbers (hide yes))
-\t\t(pin_names (offset 0))
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board no)
-\t\t(property "Reference" "#PWR" (at 0 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Value" "GND" (at 0 -3.81 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(symbol "GND_0_1"
-\t\t\t(polyline (pts (xy 0 0) (xy 0 -1.27) (xy 1.27 -1.27) (xy 0 -2.54) (xy -1.27 -1.27) (xy 0 -1.27))
-\t\t\t\t(stroke (width 0) (type default)) (fill (type none)))
-\t\t)
-\t\t(symbol "GND_1_1"
-\t\t\t(pin power_in line (at 0 0 0) (length 0) (name "GND" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t)
-\t)
-\t(symbol "PWR_FLAG"
-\t\t(power)
-\t\t(pin_numbers (hide yes))
-\t\t(pin_names (offset 0))
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board no)
-\t\t(property "Reference" "#FLG" (at 0 1.905 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Value" "PWR_FLAG" (at 0 1.905 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(symbol "PWR_FLAG_0_0"
-\t\t\t(pin power_out line (at 0 0 0) (length 0) (name "pwr" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t)
-\t)
-\t(symbol "R_0402"
-\t\t(pin_numbers (hide yes))
-\t\t(pin_names (offset 0.254))
-\t\t(exclude_from_sim no)
-\t\t(in_bom yes)
-\t\t(on_board yes)
-\t\t(property "Reference" "R" (at 0.635 2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Value" "R_0402" (at 0.635 -2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Footprint" "NFC_BusinessCard:R_0402_1005Metric" (at 0.9652 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Description" "{NC_TERM_R_KOHM}k NC pull-down" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(symbol "R_0402_0_1"
-\t\t\t(rectangle (start -1.016 -0.508) (end 1.016 0.508) (stroke (width 0.254) (type default)) (fill (type none)))
-\t\t)
-\t\t(symbol "R_0402_1_1"
-\t\t\t(pin passive line (at 0 3.81 270) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t(pin passive line (at 0 -3.81 90) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
-\t\t)
-\t)
-)
-""",
+        "(kicad_symbol_lib\n"
+        "\t(version 20231120)\n"
+        '\t(generator "nfc_business_card")\n'
+        '\t(generator_version "1.0")\n'
+        f"{symbol_bodies()}\n"
+        ")",
         encoding="utf-8",
     )
 
 
-def xqfn_pad_wh(_rot_deg: float) -> tuple[float, float]:
-    """Return KiCad pad (width, height) before rotation.
-
-    Long axis toward package centre: size is always (EDGE, ROW). Top/bottom pads
-    use rot=90 so the long axis lands on Y; side pads use rot=0 (long on X).
-    """
-    return XQFN_PAD_EDGE_MM, XQFN_PAD_ROW_MM
-
-
 def write_xqfn_footprint() -> None:
     """XQFN-8 1.6x1.6 P0.4mm, no EP solder (NXP SOT902-3)."""
-    # Pad centers: 2 pads per side, pitch 0.4, body 1.6
-    # Pin 1 at top-left going counterclockwise (NXP XQFN8 convention used here):
-    # Top: 1(left), 8(right); Right: 7(top), 6(bot); Bottom: 5(right), 4(left); Left: 3(bot), 2(top)
-    # Actually NXP Fig.3 typically: pin1 LA top-left, CCW.
-    pads = {
-        # (num, x, y, rot_deg) — pad long axis toward package center
-        "1": (-0.20, 0.75, 90),   # top, left  -> LA
-        "8": (0.20, 0.75, 90),    # top, right -> LB
-        "7": (0.75, 0.20, 0),     # right, top -> VOUT
-        "6": (0.75, -0.20, 0),    # right, bot -> VCC
-        "5": (0.20, -0.75, 90),   # bot, right -> SDA
-        "4": (-0.20, -0.75, 90),  # bot, left  -> FD
-        "3": (-0.75, -0.20, 0),   # left, bot  -> SCL
-        "2": (-0.75, 0.20, 0),    # left, top  -> VSS
-    }
     lines = [
         '(footprint "XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111"',
         f'\t(version {PCB_FORMAT_VERSION})',
@@ -659,7 +468,7 @@ def write_xqfn_footprint() -> None:
         # Pin 1 marker
         '\t(fp_circle (center -0.55 0.55) (end -0.45 0.55) (layer "F.SilkS") (stroke (width 0.12) (type solid)) (fill none))',
     ]
-    for num, (x, y, rot) in pads.items():
+    for num, (x, y, rot, _net) in XQFN_PADS.items():
         pw, ph = xqfn_pad_wh(rot)
         lines.append(
             f'\t(pad "{num}" smd roundrect (at {x} {y} {rot}) (size {pw} {ph}) '
@@ -668,46 +477,6 @@ def write_xqfn_footprint() -> None:
     lines.append(")")
     path = LIB / "footprints" / "NFC_BusinessCard.pretty" / "XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111.kicad_mod"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def rectangular_spiral(
-    cx: float,
-    cy: float,
-    outer_w: float,
-    outer_h: float,
-    turns: int,
-    width: float,
-    gap: float,
-) -> list[tuple[float, float]]:
-    """Return centerline polyline for a rectangular spiral (outer → inner)."""
-    pts: list[tuple[float, float]] = []
-    left = cx - outer_w / 2
-    right = cx + outer_w / 2
-    bottom = cy - outer_h / 2
-    top = cy + outer_h / 2
-    pitch = width + gap
-
-    # Start at bottom-left outer corner, go CCW inward
-    x, y = left, bottom
-    pts.append((x, y))
-    for t in range(turns):
-        # bottom edge L→R
-        x = right - t * pitch
-        pts.append((x, y))
-        # right edge B→T
-        y = top - t * pitch
-        pts.append((x, y))
-        # top edge R→L
-        x = left + t * pitch
-        pts.append((x, y))
-        # left edge T→B (stop short to leave gap for next turn)
-        y = bottom + (t + 1) * pitch
-        pts.append((x, y))
-        # step inward for next bottom start
-        if t < turns - 1:
-            x = left + (t + 1) * pitch
-            pts.append((x, y))
-    return pts
 
 
 def write_antenna_footprint() -> None:
@@ -1124,123 +893,9 @@ def _schematic_rf_symbols(sheet_path: str) -> str:
 
 
 def _schematic_lib_symbols() -> str:
-    """Embedded lib_symbols for the root schematic sheet."""
-    return f"""\t(lib_symbols
-\t\t(symbol "NFC_BusinessCard:NT3H2111W0FHKH"
-\t\t\t(pin_names (offset 1.016))
-\t\t\t(exclude_from_sim no)
-\t\t\t(in_bom yes)
-\t\t\t(on_board yes)
-\t\t\t(property "Reference" "U" (at 0 8.89 0) (effects (font (size 1.27 1.27))))
-\t\t\t(property "Value" "NT3H2111W0FHKH" (at 0 -8.89 0) (effects (font (size 1.27 1.27))))
-\t\t\t(property "Footprint" "NFC_BusinessCard:XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(property "Datasheet" "https://www.nxp.com/docs/en/data-sheet/NT3H2111_2211.pdf" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(property "Description" "NTAG I2C plus Type 2 Tag, 1kB, 50pF" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(property "LCSC Part #" "C710403" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(property "ki_keywords" "NFC NTAG Type2" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(symbol "NT3H2111W0FHKH_0_1"
-\t\t\t\t(rectangle (start -7.62 7.62) (end 7.62 -7.62) (stroke (width 0.254) (type default)) (fill (type background)))
-\t\t\t)
-\t\t\t(symbol "NT3H2111W0FHKH_1_1"
-\t\t\t\t(pin passive line (at -10.16 5.08 0) (length 2.54) (name "LA" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at -10.16 2.54 0) (length 2.54) (name "VSS" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at -10.16 0 0) (length 2.54) (name "SCL" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at -10.16 -2.54 0) (length 2.54) (name "FD" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at 10.16 -2.54 180) (length 2.54) (name "SDA" (effects (font (size 1.27 1.27)))) (number "5" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at 10.16 0 180) (length 2.54) (name "VCC" (effects (font (size 1.27 1.27)))) (number "6" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at 10.16 2.54 180) (length 2.54) (name "VOUT" (effects (font (size 1.27 1.27)))) (number "7" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at 10.16 5.08 180) (length 2.54) (name "LB" (effects (font (size 1.27 1.27)))) (number "8" (effects (font (size 1.27 1.27)))))
-\t\t\t)
-\t\t)
-\t\t(symbol "NFC_BusinessCard:Antenna_NFC"
-\t\t\t(pin_names (offset 1.016))
-\t\t\t(exclude_from_sim no)
-\t\t\t(in_bom no)
-\t\t\t(on_board yes)
-\t\t\t(property "Reference" "ANT" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
-\t\t\t(property "Value" "Antenna_NFC" (at 0 -5.08 0) (effects (font (size 1.27 1.27))))
-\t\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_29x45_5T" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(property "Datasheet" "~" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(property "Description" "PCB spiral NFC antenna net-tie" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(symbol "Antenna_NFC_0_1"
-\t\t\t\t(arc (start -2.54 0) (mid 0 2.54) (end 2.54 0) (stroke (width 0) (type default)) (fill (type none)))
-\t\t\t\t(arc (start -1.27 0) (mid 0 1.27) (end 1.27 0) (stroke (width 0) (type default)) (fill (type none)))
-\t\t\t)
-\t\t\t(symbol "Antenna_NFC_1_1"
-\t\t\t\t(pin passive line (at -5.08 0 0) (length 2.54) (name "1" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at 5.08 0 180) (length 2.54) (name "2" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
-\t\t\t)
-\t\t)
-\t\t(symbol "NFC_BusinessCard:C_0402"
-\t\t\t(pin_numbers (hide yes))
-\t\t\t(pin_names (offset 0.254))
-\t\t\t(exclude_from_sim no)
-\t\t\t(in_bom yes)
-\t\t\t(on_board yes)
-\t\t\t(property "Reference" "C" (at 0.635 2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t\t(property "Value" "C_0402" (at 0.635 -2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t\t(property "Footprint" "NFC_BusinessCard:C_0402_1005Metric" (at 0.9652 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(symbol "C_0402_0_1"
-\t\t\t\t(polyline (pts (xy -2.032 -0.762) (xy 2.032 -0.762)) (stroke (width 0.508) (type default)) (fill (type none)))
-\t\t\t\t(polyline (pts (xy -2.032 0.762) (xy 2.032 0.762)) (stroke (width 0.508) (type default)) (fill (type none)))
-\t\t\t)
-\t\t\t(symbol "C_0402_1_1"
-\t\t\t\t(pin passive line (at 0 3.81 270) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at 0 -3.81 90) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
-\t\t\t)
-\t\t)
-\t\t(symbol "NFC_BusinessCard:R_0402"
-\t\t\t(pin_numbers (hide yes))
-\t\t\t(pin_names (offset 0.254))
-\t\t\t(exclude_from_sim no)
-\t\t\t(in_bom yes)
-\t\t\t(on_board yes)
-\t\t\t(property "Reference" "R" (at 0.635 2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t\t(property "Value" "R_0402" (at 0.635 -2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t\t(property "Footprint" "NFC_BusinessCard:R_0402_1005Metric" (at 0.9652 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(property "Description" "{NC_TERM_R_KOHM}k NC pull-down" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(symbol "R_0402_0_1"
-\t\t\t\t(rectangle (start -1.016 -0.508) (end 1.016 0.508) (stroke (width 0.254) (type default)) (fill (type none)))
-\t\t\t)
-\t\t\t(symbol "R_0402_1_1"
-\t\t\t\t(pin passive line (at 0 3.81 270) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at 0 -3.81 90) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
-\t\t\t)
-\t\t)
-\t\t(symbol "NFC_BusinessCard:GND"
-\t\t\t(power)
-\t\t\t(pin_numbers (hide yes))
-\t\t\t(pin_names (offset 0))
-\t\t\t(exclude_from_sim no)
-\t\t\t(in_bom no)
-\t\t\t(on_board no)
-\t\t\t(property "Reference" "#PWR" (at 0 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(property "Value" "GND" (at 0 -3.81 0) (effects (font (size 1.27 1.27))))
-\t\t\t(property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(symbol "GND_0_1"
-\t\t\t\t(polyline (pts (xy 0 0) (xy 0 -1.27) (xy 1.27 -1.27) (xy 0 -2.54) (xy -1.27 -1.27) (xy 0 -1.27))
-\t\t\t\t\t(stroke (width 0) (type default)) (fill (type none)))
-\t\t\t)
-\t\t\t(symbol "GND_1_1"
-\t\t\t\t(pin power_in line (at 0 0 0) (length 0) (name "GND" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t)
-\t\t)
-\t\t(symbol "NFC_BusinessCard:PWR_FLAG"
-\t\t\t(power)
-\t\t\t(pin_numbers (hide yes))
-\t\t\t(pin_names (offset 0))
-\t\t\t(exclude_from_sim no)
-\t\t\t(in_bom no)
-\t\t\t(on_board no)
-\t\t\t(property "Reference" "#FLG" (at 0 1.905 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(property "Value" "PWR_FLAG" (at 0 1.905 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t\t(symbol "PWR_FLAG_0_0"
-\t\t\t\t(pin power_out line (at 0 0 0) (length 0) (name "pwr" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t)
-\t\t)
-\t)
-"""
+    """Embedded lib_symbols for the root schematic sheet (one node per line)."""
+    return "\t(lib_symbols\n" + symbol_bodies_embedded() + "\n\t)"
+
 
 
 def write_schematic(schematic_uuid: str) -> None:
@@ -1370,14 +1025,12 @@ def build_u1_footprint(x: float, y: float) -> str:
         fp_circle(-0.55, 0.55, -0.45, 0.55, "F.SilkS"),
         fp_rect(-1.2, -1.2, 1.2, 1.2, "F.CrtYd"),
         fp_rect(-0.8, -0.8, 0.8, 0.8, "F.Fab", width=0.1),
-        fp_pad_roundrect("1", -0.2, 0.75, 90, *xqfn_pad_wh(90), net="LA"),
-        fp_pad_roundrect("2", -0.75, 0.2, 0, *xqfn_pad_wh(0), net="GND"),
-        fp_pad_roundrect("3", -0.75, -0.2, 0, *xqfn_pad_wh(0), net="SCL"),
-        fp_pad_roundrect("4", -0.2, -0.75, 90, *xqfn_pad_wh(90), net="FD"),
-        fp_pad_roundrect("5", 0.2, -0.75, 90, *xqfn_pad_wh(90), net="SDA"),
-        fp_pad_roundrect("6", 0.75, -0.2, 0, *xqfn_pad_wh(0), net="VCC"),
-        fp_pad_roundrect("7", 0.75, 0.2, 0, *xqfn_pad_wh(0), net="VOUT"),
-        fp_pad_roundrect("8", 0.2, 0.75, 90, *xqfn_pad_wh(90), net="LB"),
+    ]
+    # Numeric pad order (1..8) to keep regenerated PCB byte-stable.
+    for num in sorted(XQFN_PADS):
+        px, py, rot, net = XQFN_PADS[num]
+        parts.append(fp_pad_roundrect(num, px, py, rot, *xqfn_pad_wh(rot), net=net))
+    parts += [
         "\t\t(embedded_fonts no)",
         "\t)",
     ]
@@ -1683,8 +1336,8 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
     d_in = d_out - 2 * n * (TRACE_W + GAP)
     d_avg = (d_out + d_in) / 2
     fill = (d_out - d_in) / (d_out + d_in)
-    L_uh = 0.027 * (n**2) * (d_avg / 10) / (1 + 2.75 * fill)
-    f_mhz = 1e3 / (2 * math.pi * math.sqrt(L_uh * 50.0)) if L_uh > 0 else 0.0
+    L_uh = estimate_l_uh(outer_w, outer_h, n, TRACE_W, GAP)
+    f_mhz = f_res_mhz(L_uh, 50.0)
     (ROOT / "antenna" / "estimate.txt").write_text(
         f"outer_w={outer_w} mm\nouter_h={outer_h} mm\nturns={n}\n"
         f"width={TRACE_W} gap={GAP}\nd_avg={d_avg:.2f} fill={fill:.3f}\n"
