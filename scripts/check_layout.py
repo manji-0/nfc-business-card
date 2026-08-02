@@ -128,6 +128,20 @@ for x0, y0, x1, y1, net, w, layer in routes:
 if not lb_cross:
     print("OK: LB F.Cu stays clear of antenna left edge (B.Cu underpass)")
 
+# F.Cu LA must not run along the antenna left-edge centerline (shorts turn 1)
+la_on_edge = False
+for x0, y0, x1, y1, net, w, layer in routes:
+    if net != "LA" or layer != "F.Cu":
+        continue
+    if abs(x0 - x1) < 1e-9 and abs(x0 - ant_left) < 1e-6:
+        errors.append(
+            f"LA F.Cu runs on antenna left edge at x={x0:.2f} "
+            f"(y={min(y0, y1):.2f}..{max(y0, y1):.2f}) — shorts outer turn"
+        )
+        la_on_edge = True
+if not la_on_edge:
+    print("OK: LA feed leaves spiral start west before rising (no left-edge short)")
+
 la_bus = u1[0] - FEED_BUS_HALF_PITCH_MM
 lb_bus = u1[0] + FEED_BUS_HALF_PITCH_MM
 bus_gap = lb_bus - la_bus - FEED_TRACE_W_MM

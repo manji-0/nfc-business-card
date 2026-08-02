@@ -19,6 +19,9 @@ FEED_BUS_HALF_PITCH_MM = 0.20
 FEED_TRACE_W_MM = 0.25
 # LA vertical skirts left of U1 so it never crosses FD (pad 4)
 FEED_LA_BYPASS_DX_MM = 2.6
+# Leave spiral start west before rising — must not share the outer left-edge
+# centerline (that shorts turn 1). Center gap ≥ trace + design clearance.
+FEED_LA_TAKEOFF_DX_MM = FEED_TRACE_W_MM + DESIGN_TRACE_CLEARANCE_MM  # 0.45
 
 # XQFN-8: short axis along the side (ROW), long axis toward package center (EDGE)
 # Pitch 0.40 − ROW 0.18 = 0.22 mm mask bridge between adjacent pads on a side

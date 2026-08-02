@@ -16,7 +16,7 @@ from jlcpcb_limits import (
     ANTENNA_GAP_MM,
     ANTENNA_TRACE_W_MM,
     FEED_BUS_HALF_PITCH_MM,
-    FEED_LA_BYPASS_DX_MM,
+    FEED_LA_TAKEOFF_DX_MM,
     FEED_TRACE_W_MM,
     FEED_VIA_OUT_DX_MM,
     FEED_VIA_OUT_DY_MM,
@@ -221,7 +221,11 @@ def feed_routes(
 ) -> list[tuple[float, float, float, float, str, float, str]]:
     """Return feed polylines as (x0, y0, x1, y1, net, width_mm, layer).
 
-    LA skirts left of U1 (bypass) so the vertical bus never crosses FD (pad 4).
+    LA leaves the spiral at its true outer start, steps west into the component
+    strip, then rises to the skirt — never along the outer left-edge centerline
+    (that would short turn 1). The bus then skirts above the LB pad row and
+    drops to pad 1 (left of U1 so it never crosses FD).
+
     LB uses a thin B.Cu underpass from the inner spiral end into the component strip —
     an F.Cu path at ant2_y would cross the outer left turn (x≈ant_x0). The copper
     bridge from the coil inner end to the take-off is the ANT1 net-tie pad 1 (LA),
@@ -234,7 +238,7 @@ def feed_routes(
     lb_x = u1_x + FEED_BUS_HALF_PITCH_MM
     pad_y = u1_y + 0.75
     la_skirt_y = pad_y + 0.65
-    la_bypass_x = u1_x - FEED_LA_BYPASS_DX_MM
+    la_rise_x = ant1_abs[0] - FEED_LA_TAKEOFF_DX_MM
     c1_la = (c1_x - 0.48, c1_y)
     c1_lb = (c1_x + 0.48, c1_y)
     w = FEED_TRACE_W
@@ -249,9 +253,10 @@ def feed_routes(
     lb_exit = (lb_exit_x, pad_y)
     c1_lb_via = (lb_exit_x, c1_y)
     return [
-        # LA: rise at feed, skirt above LB pad row, drop to pad 1.
-        (ant1_abs[0], ant1_abs[1], ant1_abs[0], la_skirt_y, "LA", w, "F.Cu"),
-        (ant1_abs[0], la_skirt_y, la_x, la_skirt_y, "LA", w, "F.Cu"),
+        # LA: west off spiral start, rise in strip, skirt to bus, drop to pad 1.
+        (ant1_abs[0], ant1_abs[1], la_rise_x, ant1_abs[1], "LA", w, "F.Cu"),
+        (la_rise_x, ant1_abs[1], la_rise_x, la_skirt_y, "LA", w, "F.Cu"),
+        (la_rise_x, la_skirt_y, la_x, la_skirt_y, "LA", w, "F.Cu"),
         (la_x, la_skirt_y, la_x, pad_y, "LA", w, "F.Cu"),
         # LA from C1 (above chip — la_x vertical is clear of FD)
         (c1_la[0], c1_la[1], la_x, c1_la[1], "LA", w, "F.Cu"),
