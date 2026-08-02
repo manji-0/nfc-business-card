@@ -43,8 +43,8 @@ GND_ISLAND_DY_MM = 0.375
 GND_ISLAND_W_MM = 0.50
 GND_ISLAND_H_MM = 0.35
 # LB B.Cu underpass exit via (east of U1, clear of the NC fan-out vias)
-FEED_VIA_OUT_DX_MM = 2.6
-FEED_LB_JOIN_DX_MM = 0.38  # LB layer-change via east of la_x vertical (pad 1 bus)
+FEED_VIA_OUT_DX_MM = 3.0  # LB underpass exit via (east of U1)
+FEED_LB_JOIN_DX_MM = 1.80  # LB layer-change via east of la_x (opens west NC channel)
 
 # NC pin weak pull-downs to VSS (B.Cu DNP 0402)
 NC_TERM_R_KOHM = 100
@@ -57,6 +57,7 @@ NC_TERM_GND_BUS_INSET_MM = 0.85  # B.Cu GND bus west of R pad 2 (room for NC cha
 # so each net leaves U1 via an F.Cu stub; vias stay ≥ 0.7 mm apart.
 NC_VIA_SIZE_MM = 0.5
 NC_VIA_DRILL_MM = 0.3
-NC_R_COL_DX_MM = -1.8  # DNP resistor column centre relative to U1 (east → more B.Cu channel room)
-NC_BELOW_LA_Y_MM = -1.48  # u1_y + this — legacy ref for docs
-NC_VIA_GND_DY_MM = 0.275  # GND bus→island via offset above the top R row
+NC_R_COL_DX_MM = -2.60  # DNP resistor column centre relative to U1
+NC_BELOW_LA_Y_MM = -1.48  # legacy ref for docs
+NC_VIA_GND_DY_MM = 0.0  # GND trunk→island via sits on the island y
+NC_STUB_NARROW_W_MM = 0.15  # F.Cu escapes between 0.4 mm-pitch pads

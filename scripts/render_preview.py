@@ -23,6 +23,7 @@ from generate_kicad_project import (  # noqa: E402
     TEXT_ZONE_W,
     TRACE_W,
     TURNS,
+    ant_tie_geometry,
     feed_routes,
     feed_vias,
     gnd_island_route,
@@ -31,9 +32,6 @@ from generate_kicad_project import (  # noqa: E402
     rectangular_spiral,
 )
 from jlcpcb_limits import (  # noqa: E402
-    ANT_TIE_TAKEOFF_DX_MM,
-    ANT_TIE_VIA_DY_MM,
-    ANTENNA_FEED_PAD_D_MM,
     GND_ISLAND_DX_MM,
     GND_ISLAND_H_MM,
     GND_ISLAND_W_MM,
@@ -215,10 +213,28 @@ def draw_roundrect_under_mask(
     card.alpha_composite(layer)
 
 
+def draw_poly_under_mask(
+    card: Image.Image,
+    poly: list[tuple[float, float]],
+    ox=0,
+    oy=0,
+    *,
+    alpha: int = 255,
+) -> None:
+    """Filled polygon copper under the mask (net-tie pads)."""
+    layer = Image.new("RGBA", card.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    xy = [mm(x, y, ox, oy) for x, y in poly]
+    d.polygon(xy, fill=(*COPPER_UNDER, alpha))
+    layer = layer.filter(ImageFilter.GaussianBlur(radius=0.35))
+    card.alpha_composite(layer)
+
+
 def draw_vias(card: Image.Image, vias, ox=0, oy=0) -> None:
     """Tented through-vias (front view: covered, subtle dark ring)."""
     d = ImageDraw.Draw(card)
-    for x, y, _net in vias:
+    for item in vias:
+        x, y, _net = item[0], item[1], item[2]
         cx, cy = mm(x, y, ox, oy)
         r = max(2, int(0.3 * PPM))  # via pad Ø0.6 mm
         d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(46, 46, 52, 140), width=1)
@@ -332,8 +348,8 @@ def draw_front(card: Image.Image, lay, ant_segs, feed_segs, vias, tie_pads, gnd_
     # Copper under mask (right zone): coil + LA/LB feeds + net-tie bridge
     draw_antenna_under_mask(card, ant_segs)
     draw_copper_under_mask(card, feed_segs, FEED_TRACE_W)
-    for (cx, cy, w, h) in tie_pads:
-        draw_roundrect_under_mask(card, cx, cy, w, h)
+    for poly in tie_pads:
+        draw_poly_under_mask(card, poly)
 
     # Components
     draw_xqfn(card, lay["u1"])
@@ -391,7 +407,7 @@ def draw_back(card: Image.Image) -> None:
     bcu = [((x0, y0), (x1, y1)) for x0, y0, x1, y1 in underpass + nc_segs_pts]
     if bcu:
         draw_copper_under_mask(card, bcu, FEED_TRACE_W, alpha=120, blur=0.6)
-    draw_vias(card, feed_vias(ant2, lay["u1"]) + list(nc_vias))
+    draw_vias(card, feed_vias(ant2, lay["u1"], lay["c1"]) + list(nc_vias))
 
     logos_dir = ASSETS / "logos"
     logo_mm, back_items = back_logo_grid()
@@ -403,15 +419,13 @@ def draw_back(card: Image.Image) -> None:
         draw_logo_at(card, Image.open(path).convert("RGBA"), cx, cy, logo_mm)
 
 
-def net_tie_pads(ant2: tuple[float, float]) -> list[tuple[float, float, float, float]]:
-    """ANT1 net-tie pads (build_ant_footprint): (cx, cy, w, h) in mm."""
-    ex, ey = ant2
-    pad_d = ANTENNA_FEED_PAD_D_MM
-    # pad 1 (LA): coil inner end -> take-off (roundrect 1.3 x 0.45)
-    p1 = (ex + ANT_TIE_TAKEOFF_DX_MM / 2, ey, ANT_TIE_TAKEOFF_DX_MM, pad_d)
-    # pad 2 (LB): take-off -> via_in (roundrect 0.45 x 0.75)
-    p2 = (ex + ANT_TIE_TAKEOFF_DX_MM, ey + ANT_TIE_VIA_DY_MM / 2, pad_d, ANT_TIE_VIA_DY_MM)
-    return [p1, p2]
+def net_tie_pads(ant_cx: float, ant_cy: float, ant_pts: list[tuple[float, float]]) -> list[list[tuple[float, float]]]:
+    """ANT1 net-tie pads as absolute-mm polygons."""
+    tie = ant_tie_geometry(ant_pts)
+    return [
+        [(ant_cx + x, ant_cy + y) for x, y in tie["la_poly"]],
+        [(ant_cx + x, ant_cy + y) for x, y in tie["lb_poly"]],
+    ]
 
 
 def gnd_island_rect(u1: tuple[float, float]) -> tuple[float, float, float, float]:
@@ -430,8 +444,8 @@ def build_geometry():
         for x0, y0, x1, y1, _net, _w, layer in routes
         if layer == "F.Cu"
     ]
-    vias = feed_vias(ant2, lay["u1"])
-    tie_pads = net_tie_pads(ant2)
+    vias = feed_vias(ant2, lay["u1"], lay["c1"])
+    tie_pads = net_tie_pads(lay["ant_cx"], lay["ant_cy"], lay["ant_pts"])
     gnd_island = gnd_island_rect(lay["u1"])
     return lay, ant_segs, feed_segs, vias, tie_pads, gnd_island
 

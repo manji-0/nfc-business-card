@@ -217,6 +217,30 @@ def fp_pad_roundrect(
 \t\t)"""
 
 
+def fp_pad_connect_roundrect(
+    num: str,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    *,
+    net: str,
+    rratio: float = 0,
+    indent: str = "\t\t",
+) -> str:
+    """F.Cu connect pad (net-tie junction, no paste/mask)."""
+    i = indent
+    i2 = indent + "\t"
+    return f"""{i}(pad "{num}" connect roundrect
+{i2}(at {x:.4f} {y:.4f})
+{i2}(size {w:.4f} {h:.4f})
+{i2}(layers "F.Cu")
+{i2}(roundrect_rratio {rratio})
+{i2}(net "{net}")
+{i2}(uuid {quuid()})
+{i})"""
+
+
 def fp_pad_circle(
     num: str,
     x: float,
