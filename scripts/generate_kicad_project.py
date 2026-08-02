@@ -241,22 +241,31 @@ def feed_routes(
     # Inner via: step into spiral hollow; outer via: component strip east of U1
     via_in = (ant2_abs[0] + ANT_TIE_TAKEOFF_DX_MM, ant2_abs[1] + ANT_TIE_VIA_DY_MM)
     via_out = (u1_x + FEED_VIA_OUT_DX_MM, pad_y + FEED_VIA_OUT_DY_MM)
+    # B.Cu underpass column between VCC (col 0.10) and VOUT (col 2.30).
+    # Westbound crossing of VOUT is on F.Cu (above LA skirt); southbound
+    # under the LA skirt is on B.Cu so it never centerline-shorts LA.
+    lb_exit_x = u1_x + 1.20
+    lb_north = (lb_exit_x, via_out[1])
+    lb_exit = (lb_exit_x, pad_y)
+    c1_lb_via = (lb_exit_x, c1_y)
     return [
-        # LA: no y=feed_la_y bus through U1 — rise at feed, skirt above LB, drop to pad 1.
+        # LA: rise at feed, skirt above LB pad row, drop to pad 1.
         (ant1_abs[0], ant1_abs[1], ant1_abs[0], la_skirt_y, "LA", w, "F.Cu"),
         (ant1_abs[0], la_skirt_y, la_x, la_skirt_y, "LA", w, "F.Cu"),
         (la_x, la_skirt_y, la_x, pad_y, "LA", w, "F.Cu"),
         # LA from C1 (above chip — la_x vertical is clear of FD)
         (c1_la[0], c1_la[1], la_x, c1_la[1], "LA", w, "F.Cu"),
         (la_x, c1_la[1], la_x, pad_y, "LA", w, "F.Cu"),
-        # LB: B.Cu underpass from via_in → via_out (south of LA skirt), then to pad 8
+        # LB antenna: B.Cu to via_out (east of VOUT), F.Cu west over VOUT,
+        # B.Cu south under LA skirt, F.Cu stub to pad 8.
         (via_in[0], via_in[1], via_out[0], via_in[1], "LB", w, "B.Cu"),
         (via_out[0], via_in[1], via_out[0], via_out[1], "LB", w, "B.Cu"),
-        (via_out[0], via_out[1], lb_x, via_out[1], "LB", w, "F.Cu"),
-        (lb_x, via_out[1], lb_x, pad_y, "LB", w, "F.Cu"),
-        # LB from C1 on F.Cu (same layer as LA/LB buses; 0.15 mm gap is design warning)
-        (c1_lb[0], c1_lb[1], lb_x, c1_lb[1], "LB", w, "F.Cu"),
-        (lb_x, c1_lb[1], lb_x, pad_y, "LB", w, "F.Cu"),
+        (via_out[0], via_out[1], lb_north[0], lb_north[1], "LB", w, "F.Cu"),
+        (lb_north[0], lb_north[1], lb_exit[0], lb_exit[1], "LB", w, "B.Cu"),
+        (lb_exit[0], lb_exit[1], lb_x, pad_y, "LB", w, "F.Cu"),
+        # LB from C1: F.Cu to underpass column, B.Cu south into lb_exit
+        (c1_lb[0], c1_lb[1], c1_lb_via[0], c1_lb_via[1], "LB", w, "F.Cu"),
+        (c1_lb_via[0], c1_lb_via[1], lb_exit[0], lb_exit[1], "LB", w, "B.Cu"),
     ]
 
 
@@ -267,12 +276,17 @@ def feed_vias(
 ) -> list[tuple[float, float, str]]:
     """Vias for the LB underpass (inner hollow + component strip)."""
     u1_x, u1_y = u1
+    _c1_x, c1_y = c1
     pad_y = u1_y + 0.75
     via_in = (ant2_abs[0] + ANT_TIE_TAKEOFF_DX_MM, ant2_abs[1] + ANT_TIE_VIA_DY_MM)
     via_out = (u1_x + FEED_VIA_OUT_DX_MM, pad_y + FEED_VIA_OUT_DY_MM)
+    lb_exit_x = u1_x + 1.20
     return [
         (via_in[0], via_in[1], "LB"),
         (via_out[0], via_out[1], "LB"),
+        (lb_exit_x, via_out[1], "LB"),
+        (lb_exit_x, c1_y, "LB"),
+        (lb_exit_x, pad_y, "LB"),
     ]
 
 
@@ -724,9 +738,15 @@ def write_c0402_footprint() -> None:
 
 
 def write_project(schematic_uuid: str) -> None:
-    from jlcpcb_limits import FEED_TRACE_W_MM, KICAD_DRC_MIN_CLEARANCE_MM
+    from jlcpcb_limits import (
+        FEED_TRACE_W_MM,
+        JLC_MIN_TRACE_WIDTH_MM,
+        KICAD_DRC_MIN_CLEARANCE_MM,
+    )
 
     clr = KICAD_DRC_MIN_CLEARANCE_MM
+    # Allow intentional NC stubs (0.15 mm); floor is JLC capability, not feed default.
+    min_tw = JLC_MIN_TRACE_WIDTH_MM
     project_json = f"""{{
   "board": {{
     "design_settings": {{
@@ -744,7 +764,7 @@ def write_project(schematic_uuid: str) -> None:
       }},
       "rules": {{
         "min_clearance": {clr},
-        "min_track_width": {FEED_TRACE_W_MM},
+        "min_track_width": {min_tw},
         "min_via_diameter": 0.4,
         "min_through_hole_diameter": 0.2,
         "solder_mask_clearance": 0.0,

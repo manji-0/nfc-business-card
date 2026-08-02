@@ -11,6 +11,6 @@
 	(fp_text value "GND" (at 0 1.0) (layer "F.Fab") (hide yes)
 		(effects (font (size 0.5 0.5) (thickness 0.08)))
 	)
-	(fp_rect (start -0.42500000000000004 -0.35) (end 0.42500000000000004 0.35) (layer "F.CrtYd") (stroke (width 0.05) (type solid)) (fill none))
-	(pad "1" smd roundrect (at 0 0) (size 0.55 0.4) (layers "F.Cu" "F.Mask") (roundrect_rratio 0.2) (uuid 888ef1b4-ae5a-484d-ae7c-86aa7dd0bea9))
+	(fp_rect (start -0.4 -0.32499999999999996) (end 0.4 0.32499999999999996) (layer "F.CrtYd") (stroke (width 0.05) (type solid)) (fill none))
+	(pad "1" smd roundrect (at 0 0) (size 0.5 0.35) (layers "F.Cu" "F.Mask") (roundrect_rratio 0.2) (uuid d0cc3c83-99d4-4537-bfab-9fb3cfe09ee0))
 )
