@@ -47,7 +47,6 @@ from kicad10 import (
     PCB_FORMAT_VERSION,
     fp_circle,
     fp_line,
-    fp_pad_circle,
     fp_pad_connect_roundrect,
     fp_pad_roundrect,
     fp_rect,
@@ -63,7 +62,8 @@ from kicad10 import (
     via,
 )
 from kicad_bitmap import bitmap_sexpr, bitmap_sexpr_rgba
-from symbol_lib import symbol_bodies, symbol_bodies_embedded
+from sexpr import SexprDoc
+from symbol_lib import embedded_lib_symbols_sexpr, symbol_lib_sexpr
 from silk_layout import (
     BOARD_H,
     BOARD_W,
@@ -417,7 +417,7 @@ def nc_terminator_routes(
 
 def feed_routes_sexpr(
     routes: list[tuple[float, float, float, float, str, float, str]],
-) -> list[str]:
+) -> list[SexprDoc]:
     return [segment(x0, y0, x1, y1, net, width=w, layer=layer) for x0, y0, x1, y1, net, w, layer in routes]
 
 
@@ -434,49 +434,37 @@ def ensure_dirs() -> None:
 
 def write_symbol_lib() -> None:
     path = LIB / "symbols" / "NFC_BusinessCard.kicad_sym"
-    path.write_text(
-        "(kicad_symbol_lib\n"
-        "\t(version 20231120)\n"
-        '\t(generator "nfc_business_card")\n'
-        '\t(generator_version "1.0")\n'
-        f"{symbol_bodies()}\n"
-        ")",
-        encoding="utf-8",
-    )
+    path.write_text(symbol_lib_sexpr(), encoding="utf-8")
 
 
 def write_xqfn_footprint() -> None:
     """XQFN-8 1.6x1.6 P0.4mm, no EP solder (NXP SOT902-3)."""
-    lines = [
-        '(footprint "XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111"',
-        f'\t(version {PCB_FORMAT_VERSION})',
-        '\t(generator "nfc_business_card")',
-        '\t(layer "F.Cu")',
-        '\t(descr "NXP SOT902-3 XQFN8 1.6x1.6mm P0.4mm; EP not soldered")',
-        '\t(tags "xqfn ntag nt3h2111")',
-        '\t(attr smd)',
-        '\t(fp_text reference "REF**" (at 0 -1.8) (layer "F.SilkS")',
-        '\t\t(effects (font (size 0.8 0.8) (thickness 0.12)))',
-        "\t)",
-        '\t(fp_text value "NT3H2111" (at 0 1.8) (layer "F.Fab")',
-        '\t\t(effects (font (size 0.6 0.6) (thickness 0.08)))',
-        "\t)",
+    doc = SexprDoc()
+    with doc.node('(footprint "XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111"'):
+        doc.line(f"(version {PCB_FORMAT_VERSION})")
+        doc.line('(generator "nfc_business_card")')
+        doc.line('(layer "F.Cu")')
+        doc.line('(descr "NXP SOT902-3 XQFN8 1.6x1.6mm P0.4mm; EP not soldered")')
+        doc.line('(tags "xqfn ntag nt3h2111")')
+        doc.line("(attr smd)")
+        with doc.node('(fp_text reference "REF**" (at 0 -1.8) (layer "F.SilkS")'):
+            doc.line("(effects (font (size 0.8 0.8) (thickness 0.12)))")
+        with doc.node('(fp_text value "NT3H2111" (at 0 1.8) (layer "F.Fab")'):
+            doc.line("(effects (font (size 0.6 0.6) (thickness 0.08)))")
         # Fab outline
-        '\t(fp_rect (start -0.8 -0.8) (end 0.8 0.8) (layer "F.Fab") (stroke (width 0.1) (type solid)) (fill none))',
+        doc.line('(fp_rect (start -0.8 -0.8) (end 0.8 0.8) (layer "F.Fab") (stroke (width 0.1) (type solid)) (fill none))')
         # Courtyard
-        '\t(fp_rect (start -1.2 -1.2) (end 1.2 1.2) (layer "F.CrtYd") (stroke (width 0.05) (type solid)) (fill none))',
+        doc.line('(fp_rect (start -1.2 -1.2) (end 1.2 1.2) (layer "F.CrtYd") (stroke (width 0.05) (type solid)) (fill none))')
         # Pin 1 marker
-        '\t(fp_circle (center -0.55 0.55) (end -0.45 0.55) (layer "F.SilkS") (stroke (width 0.12) (type solid)) (fill none))',
-    ]
-    for num, (x, y, rot, _net) in XQFN_PADS.items():
-        pw, ph = xqfn_pad_wh(rot)
-        lines.append(
-            f'\t(pad "{num}" smd roundrect (at {x} {y} {rot}) (size {pw} {ph}) '
-            f'(layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.25) (uuid {uid()}))'
-        )
-    lines.append(")")
+        doc.line('(fp_circle (center -0.55 0.55) (end -0.45 0.55) (layer "F.SilkS") (stroke (width 0.12) (type solid)) (fill none))')
+        for num, (x, y, rot, _net) in XQFN_PADS.items():
+            pw, ph = xqfn_pad_wh(rot)
+            doc.line(
+                f'(pad "{num}" smd roundrect (at {x} {y} {rot}) (size {pw} {ph}) '
+                f'(layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.25) (uuid {uid()}))'
+            )
     path = LIB / "footprints" / "NFC_BusinessCard.pretty" / "XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111.kicad_mod"
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.write_text(doc.render() + "\n", encoding="utf-8")
 
 
 def write_antenna_footprint() -> None:
@@ -486,56 +474,46 @@ def write_antenna_footprint() -> None:
 
 def write_r0402_footprint() -> None:
     path = LIB / "footprints" / "NFC_BusinessCard.pretty" / "R_0402_1005Metric.kicad_mod"
-    path.write_text(
-        f"""(footprint "R_0402_1005Metric"
-\t(version {PCB_FORMAT_VERSION})
-\t(generator "nfc_business_card")
-\t(layer "B.Cu")
-\t(descr "Resistor SMD 0402, DNP NC pin pull-down on B.Cu")
-\t(tags "resistor")
-\t(attr smd exclude_from_pos_files exclude_from_bom dnp)
-\t(fp_text reference "REF**" (at 0 -1.2) (layer "B.SilkS")
-\t\t(effects (font (size 0.8 0.8) (thickness 0.12)))
-\t)
-\t(fp_text value "DNP" (at 0 1.2) (layer "B.Fab")
-\t\t(effects (font (size 0.6 0.6) (thickness 0.08)))
-\t)
-\t(fp_line (start -0.1 -0.35) (end 0.1 -0.35) (layer "B.Fab") (stroke (width 0.1) (type solid)))
-\t(fp_line (start -0.1 0.35) (end 0.1 0.35) (layer "B.Fab") (stroke (width 0.1) (type solid)))
-\t(fp_rect (start -1.0 -0.6) (end 1.0 0.6) (layer "B.CrtYd") (stroke (width 0.05) (type solid)) (fill none))
-\t(pad "1" smd roundrect (at 0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid {uid()}))
-\t(pad "2" smd roundrect (at -0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid {uid()}))
-)
-""",
-        encoding="utf-8",
-    )
+    doc = SexprDoc()
+    with doc.node('(footprint "R_0402_1005Metric"'):
+        doc.line(f"(version {PCB_FORMAT_VERSION})")
+        doc.line('(generator "nfc_business_card")')
+        doc.line('(layer "B.Cu")')
+        doc.line('(descr "Resistor SMD 0402, DNP NC pin pull-down on B.Cu")')
+        doc.line('(tags "resistor")')
+        doc.line("(attr smd exclude_from_pos_files exclude_from_bom dnp)")
+        with doc.node('(fp_text reference "REF**" (at 0 -1.2) (layer "B.SilkS")'):
+            doc.line("(effects (font (size 0.8 0.8) (thickness 0.12)))")
+        with doc.node('(fp_text value "DNP" (at 0 1.2) (layer "B.Fab")'):
+            doc.line("(effects (font (size 0.6 0.6) (thickness 0.08)))")
+        doc.line('(fp_line (start -0.1 -0.35) (end 0.1 -0.35) (layer "B.Fab") (stroke (width 0.1) (type solid)))')
+        doc.line('(fp_line (start -0.1 0.35) (end 0.1 0.35) (layer "B.Fab") (stroke (width 0.1) (type solid)))')
+        doc.line('(fp_rect (start -1.0 -0.6) (end 1.0 0.6) (layer "B.CrtYd") (stroke (width 0.05) (type solid)) (fill none))')
+        doc.line(f'(pad "1" smd roundrect (at 0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid {uid()}))')
+        doc.line(f'(pad "2" smd roundrect (at -0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid {uid()}))')
+    path.write_text(doc.render() + "\n", encoding="utf-8")
 
 
 def write_c0402_footprint() -> None:
     path = LIB / "footprints" / "NFC_BusinessCard.pretty" / "C_0402_1005Metric.kicad_mod"
-    path.write_text(
-        f"""(footprint "C_0402_1005Metric"
-\t(version {PCB_FORMAT_VERSION})
-\t(generator "nfc_business_card")
-\t(layer "F.Cu")
-\t(descr "Capacitor SMD 0402, reexported local for DNP C1")
-\t(tags "capacitor")
-\t(attr smd exclude_from_pos_files exclude_from_bom dnp)
-\t(fp_text reference "REF**" (at 0 -1.2) (layer "F.SilkS")
-\t\t(effects (font (size 0.8 0.8) (thickness 0.12)))
-\t)
-\t(fp_text value "DNP" (at 0 1.2) (layer "F.Fab")
-\t\t(effects (font (size 0.6 0.6) (thickness 0.08)))
-\t)
-\t(fp_line (start -0.1 -0.35) (end 0.1 -0.35) (layer "F.Fab") (stroke (width 0.1) (type solid)))
-\t(fp_line (start -0.1 0.35) (end 0.1 0.35) (layer "F.Fab") (stroke (width 0.1) (type solid)))
-\t(fp_rect (start -1.0 -0.6) (end 1.0 0.6) (layer "F.CrtYd") (stroke (width 0.05) (type solid)) (fill none))
-\t(pad "1" smd roundrect (at -0.48 0) (size 0.52 0.62) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.15) (uuid {uid()}))
-\t(pad "2" smd roundrect (at 0.48 0) (size 0.52 0.62) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.15) (uuid {uid()}))
-)
-""",
-        encoding="utf-8",
-    )
+    doc = SexprDoc()
+    with doc.node('(footprint "C_0402_1005Metric"'):
+        doc.line(f"(version {PCB_FORMAT_VERSION})")
+        doc.line('(generator "nfc_business_card")')
+        doc.line('(layer "F.Cu")')
+        doc.line('(descr "Capacitor SMD 0402, reexported local for DNP C1")')
+        doc.line('(tags "capacitor")')
+        doc.line("(attr smd exclude_from_pos_files exclude_from_bom dnp)")
+        with doc.node('(fp_text reference "REF**" (at 0 -1.2) (layer "F.SilkS")'):
+            doc.line("(effects (font (size 0.8 0.8) (thickness 0.12)))")
+        with doc.node('(fp_text value "DNP" (at 0 1.2) (layer "F.Fab")'):
+            doc.line("(effects (font (size 0.6 0.6) (thickness 0.08)))")
+        doc.line('(fp_line (start -0.1 -0.35) (end 0.1 -0.35) (layer "F.Fab") (stroke (width 0.1) (type solid)))')
+        doc.line('(fp_line (start -0.1 0.35) (end 0.1 0.35) (layer "F.Fab") (stroke (width 0.1) (type solid)))')
+        doc.line('(fp_rect (start -1.0 -0.6) (end 1.0 0.6) (layer "F.CrtYd") (stroke (width 0.05) (type solid)) (fill none))')
+        doc.line(f'(pad "1" smd roundrect (at -0.48 0) (size 0.52 0.62) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.15) (uuid {uid()}))')
+        doc.line(f'(pad "2" smd roundrect (at 0.48 0) (size 0.52 0.62) (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.15) (uuid {uid()}))')
+    path.write_text(doc.render() + "\n", encoding="utf-8")
 
 
 def write_project(schematic_uuid: str) -> None:
@@ -641,22 +619,26 @@ def _u1_sch_pin_xy(net: str) -> tuple[float, float]:
     return (_sch_snap(U1_SCH_X + dx), _sch_snap(U1_SCH_Y - dy))
 
 
-def _sch_wire(x0: float, y0: float, x1: float, y1: float) -> str:
-    return (
-        f'\t(wire (pts (xy {x0} {y0}) (xy {x1} {y1})) '
-        f'(stroke (width 0) (type default)) (uuid {uid()}))'
+def _sch_wire(x0: float, y0: float, x1: float, y1: float) -> SexprDoc:
+    doc = SexprDoc()
+    doc.line(
+        f"(wire (pts (xy {x0} {y0}) (xy {x1} {y1})) "
+        f"(stroke (width 0) (type default)) (uuid {uid()}))"
     )
+    return doc
 
 
-def _sch_label(name: str, x: float, y: float, angle: int, justify: str) -> str:
-    return (
-        f'\t(global_label "{name}" (shape input) (at {x} {y} {angle}) '
-        f'(effects (font (size 1.27 1.27)) (justify {justify} bottom)) '
-        f'(uuid {uid()}))'
+def _sch_label(name: str, x: float, y: float, angle: int, justify: str) -> SexprDoc:
+    doc = SexprDoc()
+    doc.line(
+        f'(global_label "{name}" (shape input) (at {x} {y} {angle}) '
+        f"(effects (font (size 1.27 1.27)) (justify {justify} bottom)) "
+        f"(uuid {uid()}))"
     )
+    return doc
 
 
-def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
+def _schematic_nc_terminator_symbols(sheet_path: str) -> SexprDoc:
     """R2–R6 as a spaced vertical DNP bank under U1 to one GND rail.
 
     Same-side U1 pins share an X, so resistors cannot sit on the pin column —
@@ -677,8 +659,40 @@ def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
     pin1_y = _sch_snap(ry - R_SCH_PIN_SPAN)
     pin2_y = _sch_snap(ry + R_SCH_PIN_SPAN)
     desc = f"{NC_TERM_R_KOHM}k NC pull-down"
-    lines: list[str] = []
+    doc = SexprDoc()
     rail_xs: list[float] = []
+
+    def _property(name: str, value: str, at: str, *, hide: bool = False, justify: str | None = None) -> None:
+        effects = "(font (size 1.27 1.27))"
+        if justify is not None:
+            effects += f" (justify {justify})"
+        if hide:
+            effects += " (hide yes)"
+        doc.line(f'(property "{name}" "{value}" (at {at}) (effects {effects}))')
+
+    def _symbol_instance(
+        lib_id: str,
+        at_x: float,
+        at_y: float,
+        *,
+        in_bom: str,
+        on_board: str,
+        dnp: str,
+        pins: tuple[str, ...],
+        instances: str,
+    ) -> None:
+        with doc.node("(symbol"):
+            doc.line(f'(lib_id "{lib_id}")')
+            doc.line(f"(at {at_x} {at_y} 0)")
+            doc.line("(unit 1)")
+            doc.line("(exclude_from_sim no)")
+            doc.line(f"(in_bom {in_bom})")
+            doc.line(f"(on_board {on_board})")
+            doc.line(f"(dnp {dnp})")
+            doc.line(f"(uuid {uid()})")
+            for pin in pins:
+                doc.line(f'(pin "{pin}" (uuid {uid()}))')
+            doc.line(instances)
 
     for ref, net, rx in placements:
         px, py = _u1_sch_pin_xy(net)
@@ -686,26 +700,23 @@ def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
         rail_xs.append(rx)
         outside = -2.54 if rx <= U1_SCH_X else 2.54
         just = "right" if outside < 0 else "left"
-        lines.append(
-            f"""\t(symbol
-\t\t(lib_id "NFC_BusinessCard:R_0402")
-\t\t(at {rx} {ry} 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board yes)
-\t\t(dnp yes)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "{ref}" (at {rx + outside} {ry - 1.27} 0) (effects (font (size 1.27 1.27)) (justify {just})))
-\t\t(property "Value" "DNP" (at {rx + outside} {ry + 1.27} 0) (effects (font (size 1.27 1.27)) (justify {just})))
-\t\t(property "Footprint" "NFC_BusinessCard:R_0402_1005Metric" (at {rx} {ry} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Description" "{desc}" (at {rx} {ry} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "LCSC Part #" "{NC_TERM_R_LCSC}" (at {rx} {ry} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(pin "2" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "{ref}") (unit 1))))
-\t)"""
-        )
+        with doc.node("(symbol"):
+            doc.line('(lib_id "NFC_BusinessCard:R_0402")')
+            doc.line(f"(at {rx} {ry} 0)")
+            doc.line("(unit 1)")
+            doc.line("(exclude_from_sim no)")
+            doc.line("(in_bom no)")
+            doc.line("(on_board yes)")
+            doc.line("(dnp yes)")
+            doc.line(f"(uuid {uid()})")
+            _property("Reference", ref, f"{rx + outside} {ry - 1.27} 0", justify=just)
+            _property("Value", "DNP", f"{rx + outside} {ry + 1.27} 0", justify=just)
+            _property("Footprint", "NFC_BusinessCard:R_0402_1005Metric", f"{rx} {ry} 0", hide=True)
+            _property("Description", desc, f"{rx} {ry} 0", hide=True)
+            _property("LCSC Part #", NC_TERM_R_LCSC, f"{rx} {ry} 0", hide=True)
+            doc.line(f'(pin "1" (uuid {uid()}))')
+            doc.line(f'(pin "2" (uuid {uid()}))')
+            doc.line(f'(instances (project "nfc-business-card" (path "{sheet_path}" (reference "{ref}") (unit 1))))')
         # Outward jog at the pin's own Y (never shares a horizontal across nets),
         # then drop clear of the body. The net label sits on the outward
         # jog/stub so the pin↔net link is readable in one glance.
@@ -713,15 +724,15 @@ def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
         lab_just = "right" if px < U1_SCH_X else "left"
         if abs(px - rx) > 1e-9:
             # pin-column drop impossible (jogs outward) → label on the jog
-            lines.append(_sch_wire(px, py, rx, py))
+            doc.embed(_sch_wire(px, py, rx, py))
             lab_x = _sch_snap((px + rx) / 2)
         else:
             # pin column drop at the R column → short outward label stub
             lab_x = _sch_snap(px + (-2.54 if px < U1_SCH_X else 2.54))
-            lines.append(_sch_wire(px, py, lab_x, py))
-        lines.append(_sch_wire(rx, py, rx, pin1_y))
-        lines.append(_sch_label(net, lab_x, py, ang, lab_just))
-        lines.append(_sch_wire(rx, pin2_y, rx, GND_SCH_Y))
+            doc.embed(_sch_wire(px, py, lab_x, py))
+        doc.embed(_sch_wire(rx, py, rx, pin1_y))
+        doc.embed(_sch_label(net, lab_x, py, ang, lab_just))
+        doc.embed(_sch_wire(rx, pin2_y, rx, GND_SCH_Y))
 
     # Shared GND rail. Power symbols (and reliable T-joins) need wire endpoints,
     # so segment the rail at every resistor X and at the VSS/GND junction.
@@ -729,134 +740,133 @@ def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
     vss_x, vss_y = _u1_sch_pin_xy("VSS")
     gnd0_x = _sch_snap(x0 - 2 * SCH_G)
     gnd1_x = _sch_snap(x1 + 2 * SCH_G)
-    lines.append(_sch_wire(vss_x, vss_y, gnd0_x, vss_y))
-    lines.append(_sch_wire(gnd0_x, vss_y, gnd0_x, GND_SCH_Y))
+    doc.embed(_sch_wire(vss_x, vss_y, gnd0_x, vss_y))
+    doc.embed(_sch_wire(gnd0_x, vss_y, gnd0_x, GND_SCH_Y))
     rail_nodes = sorted({_sch_snap(x) for x in (*rail_xs, gnd0_x, gnd1_x)})
     for a, b in zip(rail_nodes, rail_nodes[1:]):
-        lines.append(_sch_wire(a, GND_SCH_Y, b, GND_SCH_Y))
+        doc.embed(_sch_wire(a, GND_SCH_Y, b, GND_SCH_Y))
     flag_x = _sch_snap(gnd0_x - SCH_G)
-    lines.append(_sch_wire(flag_x, GND_SCH_Y, gnd0_x, GND_SCH_Y))
-    lines.append(
-        f"""\t(symbol
-\t\t(lib_id "NFC_BusinessCard:GND")
-\t\t(at {gnd0_x} {GND_SCH_Y} 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board no)
-\t\t(dnp no)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "#PWR01" (at {gnd0_x} {GND_SCH_Y + 5.08} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Value" "GND" (at {gnd0_x} {GND_SCH_Y + 3.81} 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Footprint" "" (at {gnd0_x} {GND_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#PWR01") (unit 1))))
-\t)"""
-    )
-    lines.append(
-        f"""\t(symbol
-\t\t(lib_id "NFC_BusinessCard:GND")
-\t\t(at {gnd1_x} {GND_SCH_Y} 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board no)
-\t\t(dnp no)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "#PWR02" (at {gnd1_x} {GND_SCH_Y + 5.08} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Value" "GND" (at {gnd1_x} {GND_SCH_Y + 3.81} 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Footprint" "" (at {gnd1_x} {GND_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#PWR02") (unit 1))))
-\t)"""
-    )
-    lines.append(
-        f"""\t(symbol
-\t\t(lib_id "NFC_BusinessCard:PWR_FLAG")
-\t\t(at {flag_x} {GND_SCH_Y} 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board no)
-\t\t(dnp no)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "#FLG01" (at {flag_x} {GND_SCH_Y - 2.54} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Value" "PWR_FLAG" (at {flag_x} {GND_SCH_Y - 2.54} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Footprint" "" (at {flag_x} {GND_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#FLG01") (unit 1))))
-\t)"""
-    )
-    return "\n".join(lines)
+    doc.embed(_sch_wire(flag_x, GND_SCH_Y, gnd0_x, GND_SCH_Y))
+    for ref, at_x, note_y in (("#PWR01", gnd0_x, GND_SCH_Y), ("#PWR02", gnd1_x, GND_SCH_Y)):
+        with doc.node("(symbol"):
+            doc.line('(lib_id "NFC_BusinessCard:GND")')
+            doc.line(f"(at {at_x} {GND_SCH_Y} 0)")
+            doc.line("(unit 1)")
+            doc.line("(exclude_from_sim no)")
+            doc.line("(in_bom no)")
+            doc.line("(on_board no)")
+            doc.line("(dnp no)")
+            doc.line(f"(uuid {uid()})")
+            _property("Reference", ref, f"{at_x} {GND_SCH_Y + 5.08} 0", hide=True)
+            _property("Value", "GND", f"{at_x} {GND_SCH_Y + 3.81} 0")
+            _property("Footprint", "", f"{at_x} {GND_SCH_Y} 0", hide=True)
+            doc.line(f'(pin "1" (uuid {uid()}))')
+            doc.line(f'(instances (project "nfc-business-card" (path "{sheet_path}" (reference "{ref}") (unit 1))))')
+    with doc.node("(symbol"):
+        doc.line('(lib_id "NFC_BusinessCard:PWR_FLAG")')
+        doc.line(f"(at {flag_x} {GND_SCH_Y} 0)")
+        doc.line("(unit 1)")
+        doc.line("(exclude_from_sim no)")
+        doc.line("(in_bom no)")
+        doc.line("(on_board no)")
+        doc.line("(dnp no)")
+        doc.line(f"(uuid {uid()})")
+        _property("Reference", "#FLG01", f"{flag_x} {GND_SCH_Y - 2.54} 0", hide=True)
+        _property("Value", "PWR_FLAG", f"{flag_x} {GND_SCH_Y - 2.54} 0", hide=True)
+        _property("Footprint", "", f"{flag_x} {GND_SCH_Y} 0", hide=True)
+        doc.line(f'(pin "1" (uuid {uid()}))')
+        doc.line(f'(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#FLG01") (unit 1))))')
+    return doc
 
 
-def _schematic_rf_symbols(sheet_path: str) -> str:
+def _schematic_rf_symbols(sheet_path: str) -> SexprDoc:
     """Antenna + C1 + U1 with LA/LB joined by labels (no crossing trunks)."""
-    lines: list[str] = []
+    doc = SexprDoc()
+
+    def _property(name: str, value: str, at: str, *, hide: bool = False, justify: str | None = None) -> None:
+        effects = "(font (size 1.27 1.27))"
+        if justify is not None:
+            effects += f" (justify {justify})"
+        if hide:
+            effects += " (hide yes)"
+        doc.line(f'(property "{name}" "{value}" (at {at}) (effects {effects}))')
+
+    def _symbol(
+        lib_id: str,
+        at_x: float,
+        at_y: float,
+        *,
+        in_bom: str,
+        on_board: str,
+        dnp: str,
+        props: tuple[tuple[str, str, str, dict], ...],
+        pin_count: int,
+        instances: str,
+    ) -> None:
+        with doc.node("(symbol"):
+            doc.line(f'(lib_id "{lib_id}")')
+            doc.line(f"(at {at_x} {at_y} 0)")
+            doc.line("(unit 1)")
+            doc.line("(exclude_from_sim no)")
+            doc.line(f"(in_bom {in_bom})")
+            doc.line(f"(on_board {on_board})")
+            doc.line(f"(dnp {dnp})")
+            doc.line(f"(uuid {uid()})")
+            for name, value, at, kw in props:
+                _property(name, value, at, **kw)
+            for pin in range(1, pin_count + 1):
+                doc.line(f'(pin "{pin}" (uuid {uid()}))')
+            doc.line(instances)
+
     # U1
-    lines.append(
-        f"""\t(symbol
-\t\t(lib_id "NFC_BusinessCard:NT3H2111W0FHKH")
-\t\t(at {U1_SCH_X} {U1_SCH_Y} 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom yes)
-\t\t(on_board yes)
-\t\t(dnp no)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "U1" (at {U1_SCH_X} {U1_SCH_Y - 10.16} 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Value" "NT3H2111W0FHKH" (at {U1_SCH_X + 20.32} {U1_SCH_Y} 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Footprint" "NFC_BusinessCard:XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111" (at {U1_SCH_X} {U1_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "LCSC Part #" "C710403" (at {U1_SCH_X} {U1_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(pin "2" (uuid {uid()}))
-\t\t(pin "3" (uuid {uid()}))
-\t\t(pin "4" (uuid {uid()}))
-\t\t(pin "5" (uuid {uid()}))
-\t\t(pin "6" (uuid {uid()}))
-\t\t(pin "7" (uuid {uid()}))
-\t\t(pin "8" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "U1") (unit 1))))
-\t)"""
+    _symbol(
+        "NFC_BusinessCard:NT3H2111W0FHKH",
+        U1_SCH_X,
+        U1_SCH_Y,
+        in_bom="yes",
+        on_board="yes",
+        dnp="no",
+        props=(
+            ("Reference", "U1", f"{U1_SCH_X} {U1_SCH_Y - 10.16} 0", {}),
+            ("Value", "NT3H2111W0FHKH", f"{U1_SCH_X + 20.32} {U1_SCH_Y} 0", {"justify": "left"}),
+            ("Footprint", "NFC_BusinessCard:XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111", f"{U1_SCH_X} {U1_SCH_Y} 0", {"hide": True}),
+            ("LCSC Part #", "C710403", f"{U1_SCH_X} {U1_SCH_Y} 0", {"hide": True}),
+        ),
+        pin_count=8,
+        instances=f'(instances (project "nfc-business-card" (path "{sheet_path}" (reference "U1") (unit 1))))',
     )
     # Antenna
-    lines.append(
-        f"""\t(symbol
-\t\t(lib_id "NFC_BusinessCard:Antenna_NFC")
-\t\t(at {ANT_SCH_X} {ANT_SCH_Y} 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board yes)
-\t\t(dnp no)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "ANT1" (at {ANT_SCH_X} {ANT_SCH_Y - 7.62} 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Value" "Antenna_NFC" (at {ANT_SCH_X} {ANT_SCH_Y + 7.62} 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_29x45_5T" (at {ANT_SCH_X} {ANT_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(pin "2" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "ANT1") (unit 1))))
-\t)"""
+    _symbol(
+        "NFC_BusinessCard:Antenna_NFC",
+        ANT_SCH_X,
+        ANT_SCH_Y,
+        in_bom="no",
+        on_board="yes",
+        dnp="no",
+        props=(
+            ("Reference", "ANT1", f"{ANT_SCH_X} {ANT_SCH_Y - 7.62} 0", {}),
+            ("Value", "Antenna_NFC", f"{ANT_SCH_X} {ANT_SCH_Y + 7.62} 0", {}),
+            ("Footprint", "NFC_BusinessCard:Antenna_Spiral_29x45_5T", f"{ANT_SCH_X} {ANT_SCH_Y} 0", {"hide": True}),
+        ),
+        pin_count=2,
+        instances=f'(instances (project "nfc-business-card" (path "{sheet_path}" (reference "ANT1") (unit 1))))',
     )
     # C1 DNP — joins LA/LB only via labels
-    lines.append(
-        f"""\t(symbol
-\t\t(lib_id "NFC_BusinessCard:C_0402")
-\t\t(at {C1_SCH_X} {C1_SCH_Y} 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board yes)
-\t\t(dnp yes)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "C1" (at {C1_SCH_X + 3.81} {C1_SCH_Y - 1.27} 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Value" "DNP" (at {C1_SCH_X + 3.81} {C1_SCH_Y + 1.27} 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Footprint" "NFC_BusinessCard:C_0402_1005Metric" (at {C1_SCH_X} {C1_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "LCSC Part #" "{C1_LCSC}" (at {C1_SCH_X} {C1_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(pin "2" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "C1") (unit 1))))
-\t)"""
+    _symbol(
+        "NFC_BusinessCard:C_0402",
+        C1_SCH_X,
+        C1_SCH_Y,
+        in_bom="no",
+        on_board="yes",
+        dnp="yes",
+        props=(
+            ("Reference", "C1", f"{C1_SCH_X + 3.81} {C1_SCH_Y - 1.27} 0", {"justify": "left"}),
+            ("Value", "DNP", f"{C1_SCH_X + 3.81} {C1_SCH_Y + 1.27} 0", {"justify": "left"}),
+            ("Footprint", "NFC_BusinessCard:C_0402_1005Metric", f"{C1_SCH_X} {C1_SCH_Y} 0", {"hide": True}),
+            ("LCSC Part #", C1_LCSC, f"{C1_SCH_X} {C1_SCH_Y} 0", {"hide": True}),
+        ),
+        pin_count=2,
+        instances=f'(instances (project "nfc-business-card" (path "{sheet_path}" (reference "C1") (unit 1))))',
     )
 
     # ANT stubs + labels (pin1 left / pin2 right at ±5.08)
@@ -864,81 +874,67 @@ def _schematic_rf_symbols(sheet_path: str) -> str:
     ant2 = (_sch_snap(ANT_SCH_X + 5.08), ANT_SCH_Y)
     la_ant = (_sch_snap(ant1[0] - 5.08), ANT_SCH_Y)
     lb_ant = (_sch_snap(ant2[0] + 5.08), ANT_SCH_Y)
-    lines.append(_sch_wire(ant1[0], ant1[1], la_ant[0], la_ant[1]))
-    lines.append(_sch_label("LA", la_ant[0], la_ant[1], 180, "right"))
-    lines.append(_sch_wire(ant2[0], ant2[1], lb_ant[0], lb_ant[1]))
-    lines.append(_sch_label("LB", lb_ant[0], lb_ant[1], 0, "left"))
+    doc.embed(_sch_wire(ant1[0], ant1[1], la_ant[0], la_ant[1]))
+    doc.embed(_sch_label("LA", la_ant[0], la_ant[1], 180, "right"))
+    doc.embed(_sch_wire(ant2[0], ant2[1], lb_ant[0], lb_ant[1]))
+    doc.embed(_sch_label("LB", lb_ant[0], lb_ant[1], 0, "left"))
 
     # U1 LA/LB stubs + labels
     la_u1 = _u1_sch_pin_xy("LA")
     lb_u1 = _u1_sch_pin_xy("LB")
     la_stub = (_sch_snap(la_u1[0] - 5.08), la_u1[1])
     lb_stub = (_sch_snap(lb_u1[0] + 5.08), lb_u1[1])
-    lines.append(_sch_wire(la_u1[0], la_u1[1], la_stub[0], la_stub[1]))
-    lines.append(_sch_label("LA", la_stub[0], la_stub[1], 180, "right"))
-    lines.append(_sch_wire(lb_u1[0], lb_u1[1], lb_stub[0], lb_stub[1]))
-    lines.append(_sch_label("LB", lb_stub[0], lb_stub[1], 0, "left"))
+    doc.embed(_sch_wire(la_u1[0], la_u1[1], la_stub[0], la_stub[1]))
+    doc.embed(_sch_label("LA", la_stub[0], la_stub[1], 180, "right"))
+    doc.embed(_sch_wire(lb_u1[0], lb_u1[1], lb_stub[0], lb_stub[1]))
+    doc.embed(_sch_label("LB", lb_stub[0], lb_stub[1], 0, "left"))
 
     # C1 pin1 (north) → LA, pin2 (south) → LB
     c1_p1 = (C1_SCH_X, _sch_snap(C1_SCH_Y - R_SCH_PIN_SPAN))
     c1_p2 = (C1_SCH_X, _sch_snap(C1_SCH_Y + R_SCH_PIN_SPAN))
     c1_la = (C1_SCH_X, _sch_snap(c1_p1[1] - 2.54))
     c1_lb = (C1_SCH_X, _sch_snap(c1_p2[1] + 2.54))
-    lines.append(_sch_wire(c1_p1[0], c1_p1[1], c1_la[0], c1_la[1]))
-    lines.append(_sch_label("LA", c1_la[0], c1_la[1], 90, "left"))
-    lines.append(_sch_wire(c1_p2[0], c1_p2[1], c1_lb[0], c1_lb[1]))
-    lines.append(_sch_label("LB", c1_lb[0], c1_lb[1], 270, "right"))
+    doc.embed(_sch_wire(c1_p1[0], c1_p1[1], c1_la[0], c1_la[1]))
+    doc.embed(_sch_label("LA", c1_la[0], c1_la[1], 90, "left"))
+    doc.embed(_sch_wire(c1_p2[0], c1_p2[1], c1_lb[0], c1_lb[1]))
+    doc.embed(_sch_label("LB", c1_lb[0], c1_lb[1], 270, "right"))
 
-    return "\n".join(lines)
-
-
-def _schematic_lib_symbols() -> str:
-    """Embedded lib_symbols for the root schematic sheet (one node per line)."""
-    return "\t(lib_symbols\n" + symbol_bodies_embedded() + "\n\t)"
-
+    return doc
 
 
 def write_schematic(schematic_uuid: str) -> None:
     """U1 + ANT1 + C1(DNP) + R2–R6(DNP): label-joined RF, vertical NC pull-downs."""
     sheet_path = f"/{schematic_uuid}"
     note_uuid = uid()
-    note = f"""\t(text "Passive NFC business card\\nU1=NT3H2111 (C710403)\\nC1=DNP tuning LA-LB (10-22 pF NP0)\\nR2-R6=DNP 100k to GND (SCL/SDA/FD/VCC/VOUT)\\nVSS=local GND island"
-\t\t(at {NOTE_SCH_X} {NOTE_SCH_Y} 0)
-\t\t(effects (font (size 1.27 1.27)) (justify left top))
-\t\t(uuid {note_uuid})
-\t)"""
-    body = "\n".join(
-        [
-            "(kicad_sch",
-            "\t(version 20231120)",
-            '\t(generator "nfc_business_card")',
-            '\t(generator_version "1.0")',
-            f"\t(uuid {schematic_uuid})",
-            '\t(paper "A4")',
-            "\t(title_block",
-            '\t\t(title "NFC Business Card")',
-            f'\t\t(date "{date.today().isoformat()}")',
-            '\t\t(rev "B")',
-            '\t\t(company "")',
-            '\t\t(comment 1 "89x51mm passive NFC URL tag")',
-            '\t\t(comment 2 "NT3H2111W0FHKH LCSC C710403")',
-            "\t)",
-            _schematic_lib_symbols().rstrip(),
-            _schematic_rf_symbols(sheet_path),
-            _schematic_nc_terminator_symbols(sheet_path),
-            note,
-            "\t(sheet_instances",
-            f'\t\t(path "{sheet_path}" (page "1"))',
-            "\t)",
-            ")",
-            "",
-        ]
-    )
-    (ROOT / "nfc-business-card.kicad_sch").write_text(body, encoding="utf-8")
+    doc = SexprDoc()
+    with doc.node("(kicad_sch"):
+        doc.line("(version 20231120)")
+        doc.line('(generator "nfc_business_card")')
+        doc.line('(generator_version "1.0")')
+        doc.line(f"(uuid {schematic_uuid})")
+        doc.line('(paper "A4")')
+        with doc.node("(title_block"):
+            doc.line('(title "NFC Business Card")')
+            doc.line(f'(date "{date.today().isoformat()}")')
+            doc.line('(rev "B")')
+            doc.line('(company "")')
+            doc.line('(comment 1 "89x51mm passive NFC URL tag")')
+            doc.line('(comment 2 "NT3H2111W0FHKH LCSC C710403")')
+        doc.embed(embedded_lib_symbols_sexpr())
+        doc.embed(_schematic_rf_symbols(sheet_path))
+        doc.embed(_schematic_nc_terminator_symbols(sheet_path))
+        with doc.node('(text "Passive NFC business card\\nU1=NT3H2111 (C710403)\\nC1=DNP tuning LA-LB (10-22 pF NP0)\\nR2-R6=DNP 100k to GND (SCL/SDA/FD/VCC/VOUT)\\nVSS=local GND island"'):
+            doc.line(f"(at {NOTE_SCH_X} {NOTE_SCH_Y} 0)")
+            doc.line("(effects (font (size 1.27 1.27)) (justify left top))")
+            doc.line(f"(uuid {note_uuid})")
+        with doc.node("(sheet_instances"):
+            doc.line(f'(path "{sheet_path}" (page "1"))')
+    content = doc.render() + "\n"
+    (ROOT / "nfc-business-card.kicad_sch").write_text(content, encoding="utf-8")
 
 
 
-def build_silk_bitmaps(ant_cx: float, ant_cy: float) -> str:
+def build_silk_bitmaps(ant_cx: float, ant_cy: float) -> SexprDoc:
     """Front QR + NFC icon + Pillow silk PNGs, back 2x2 logos as KiCad images."""
     required = [
         (ASSETS / "qr-silk.png", "qr-silk.png"),
@@ -1000,41 +996,40 @@ def build_silk_bitmaps(ant_cx: float, ant_cy: float) -> str:
                 preview_coords=True,
             )
         )
-    return "\n".join(parts) + "\n"
+    doc = SexprDoc()
+    for part in parts:
+        doc.embed(part)
+    return doc
 
 
-def _fp_hidden_fields(*, description: str = "") -> str:
-    return (
-        footprint_property("Datasheet", "", 0, 0, 0, "F.Fab", hide=True)
-        + footprint_property("Description", description, 0, 0, 0, "F.Fab", hide=True)
-    )
+def _fp_hidden_fields(*, description: str = "") -> SexprDoc:
+    doc = SexprDoc()
+    doc.embed(footprint_property("Datasheet", "", 0, 0, 0, "F.Fab", hide=True))
+    doc.embed(footprint_property("Description", description, 0, 0, 0, "F.Fab", hide=True))
+    return doc
 
 
-def build_u1_footprint(x: float, y: float) -> str:
-    parts = [
-        '\t(footprint "NFC_BusinessCard:XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111"',
-        '\t\t(layer "F.Cu")',
-        f"\t\t(uuid {quuid()})",
-        f"\t\t(at {x} {y})",
-        footprint_property("Reference", "U1", 0, -2.2, 0, "F.SilkS", hide=True, font_size=(0.7, 0.7), thickness=0.1),
-        footprint_property("Value", "NT3H2111W0FHKH", 0, 2.2, 0, "F.Fab", font_size=(0.5, 0.5), thickness=0.08),
-        _fp_hidden_fields(),
-        footprint_property("LCSC Part #", "C710403", 0, 0, 0, "F.Fab", hide=True, thickness=0.15),
-        "\t\t(attr smd)",
-        "\t\t(duplicate_pad_numbers_are_jumpers no)",
-        fp_circle(-0.55, 0.55, -0.45, 0.55, "F.SilkS"),
-        fp_rect(-1.2, -1.2, 1.2, 1.2, "F.CrtYd"),
-        fp_rect(-0.8, -0.8, 0.8, 0.8, "F.Fab", width=0.1),
-    ]
-    # Numeric pad order (1..8) to keep regenerated PCB byte-stable.
-    for num in sorted(XQFN_PADS):
-        px, py, rot, net = XQFN_PADS[num]
-        parts.append(fp_pad_roundrect(num, px, py, rot, *xqfn_pad_wh(rot), net=net))
-    parts += [
-        "\t\t(embedded_fonts no)",
-        "\t)",
-    ]
-    return "\n".join(parts) + "\n"
+def build_u1_footprint(x: float, y: float) -> SexprDoc:
+    doc = SexprDoc()
+    with doc.node('(footprint "NFC_BusinessCard:XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111"'):
+        doc.line('(layer "F.Cu")')
+        doc.line(f"(uuid {quuid()})")
+        doc.line(f"(at {x} {y})")
+        doc.embed(footprint_property("Reference", "U1", 0, -2.2, 0, "F.SilkS", hide=True, font_size=(0.7, 0.7), thickness=0.1))
+        doc.embed(footprint_property("Value", "NT3H2111W0FHKH", 0, 2.2, 0, "F.Fab", font_size=(0.5, 0.5), thickness=0.08))
+        doc.embed(_fp_hidden_fields())
+        doc.embed(footprint_property("LCSC Part #", "C710403", 0, 0, 0, "F.Fab", hide=True, thickness=0.15))
+        doc.line("(attr smd)")
+        doc.line("(duplicate_pad_numbers_are_jumpers no)")
+        doc.embed(fp_circle(-0.55, 0.55, -0.45, 0.55, "F.SilkS"))
+        doc.embed(fp_rect(-1.2, -1.2, 1.2, 1.2, "F.CrtYd"))
+        doc.embed(fp_rect(-0.8, -0.8, 0.8, 0.8, "F.Fab", width=0.1))
+        # Numeric pad order (1..8) to keep regenerated PCB byte-stable.
+        for num in sorted(XQFN_PADS):
+            px, py, rot, net = XQFN_PADS[num]
+            doc.embed(fp_pad_roundrect(num, px, py, rot, *xqfn_pad_wh(rot), net=net))
+        doc.line("(embedded_fonts no)")
+    return doc
 
 
 def build_ant_footprint(x: float, y: float, ant_pts: list[tuple[float, float]]) -> str:
@@ -1056,142 +1051,135 @@ def build_ant_footprint(x: float, y: float, ant_pts: list[tuple[float, float]]) 
     end_x, end_y = tie["end"]
     takeoff_x = tie["takeoff_x"]
     w = tie["w"]
-    parts = [
-        '\t(footprint "NFC_BusinessCard:Antenna_Spiral_29x45_5T"',
-        '\t\t(layer "F.Cu")',
-        f"\t\t(uuid {quuid()})",
-        f"\t\t(at {x} {y})",
-        footprint_property("Reference", "ANT1", 0, 0, 0, "F.SilkS", hide=True, font_size=(0.8, 0.8), thickness=0.12),
-        footprint_property("Value", "Antenna_NFC", 0, 0, 0, "F.Fab", hide=True, font_size=(0.8, 0.8), thickness=0.12),
-        _fp_hidden_fields(),
+    doc = SexprDoc()
+    with doc.node('(footprint "NFC_BusinessCard:Antenna_Spiral_29x45_5T"'):
+        doc.line('(layer "F.Cu")')
+        doc.line(f"(uuid {quuid()})")
+        doc.line(f"(at {x} {y})")
+        doc.embed(footprint_property("Reference", "ANT1", 0, 0, 0, "F.SilkS", hide=True, font_size=(0.8, 0.8), thickness=0.12))
+        doc.embed(footprint_property("Value", "Antenna_NFC", 0, 0, 0, "F.Fab", hide=True, font_size=(0.8, 0.8), thickness=0.12))
+        doc.embed(_fp_hidden_fields())
         # net-tie: coil end (LA, pad 1) bridges to the LB feed take-off (pad 2)
-        '\t\t(attr board_only exclude_from_pos_files exclude_from_bom allow_missing_courtyard)',
-        '\t\t(net_tie_pad_groups "1,2")',
-        "\t\t(duplicate_pad_numbers_are_jumpers no)",
-        fp_pad_connect_roundrect(
-            "1",
-            end_x + ANT_TIE_TAKEOFF_DX_MM / 2,
-            end_y,
-            ANT_TIE_TAKEOFF_DX_MM,
-            w,
-            net="LA",
-        ),
-        fp_pad_connect_roundrect(
-            "2",
-            takeoff_x,
-            end_y + ANT_TIE_VIA_DY_MM / 2,
-            w,
-            ANT_TIE_VIA_DY_MM,
-            net="LB",
-        ),
-        "\t\t(embedded_fonts no)",
-        "\t)",
-    ]
-    return "\n".join(parts) + "\n"
+        doc.line("(attr board_only exclude_from_pos_files exclude_from_bom allow_missing_courtyard)")
+        doc.line('(net_tie_pad_groups "1,2")')
+        doc.line("(duplicate_pad_numbers_are_jumpers no)")
+        doc.embed(
+            fp_pad_connect_roundrect(
+                "1",
+                end_x + ANT_TIE_TAKEOFF_DX_MM / 2,
+                end_y,
+                ANT_TIE_TAKEOFF_DX_MM,
+                w,
+                net="LA",
+            )
+        )
+        doc.embed(
+            fp_pad_connect_roundrect(
+                "2",
+                takeoff_x,
+                end_y + ANT_TIE_VIA_DY_MM / 2,
+                w,
+                ANT_TIE_VIA_DY_MM,
+                net="LB",
+            )
+        )
+        doc.line("(embedded_fonts no)")
+    return doc
 
 
-def build_gnd_island(u1: tuple[float, float]) -> str:
+def build_gnd_island(u1: tuple[float, float]) -> SexprDoc:
     """Local VSS copper island in the component strip (not under the spiral)."""
     u1_x, u1_y = u1
     x = u1_x - GND_ISLAND_DX_MM
     y = u1_y + GND_ISLAND_DY_MM
     w, h = GND_ISLAND_W_MM, GND_ISLAND_H_MM
-    parts = [
-        '\t(footprint "NFC_BusinessCard:GND_Island"',
-        '\t\t(layer "F.Cu")',
-        f"\t\t(uuid {quuid()})",
-        f"\t\t(at {x} {y})",
-        footprint_property("Reference", "GND1", 0, -1.0, 0, "F.SilkS", hide=True, font_size=(0.5, 0.5), thickness=0.08),
-        footprint_property("Value", "GND", 0, 1.0, 0, "F.Fab", hide=True, font_size=(0.5, 0.5), thickness=0.08),
-        _fp_hidden_fields(),
-        "\t\t(attr board_only exclude_from_pos_files exclude_from_bom)",
-        "\t\t(duplicate_pad_numbers_are_jumpers no)",
-        fp_rect(-w / 2 - 0.15, -h / 2 - 0.15, w / 2 + 0.15, h / 2 + 0.15, "F.CrtYd", width=0.05),
+    doc = SexprDoc()
+    with doc.node('(footprint "NFC_BusinessCard:GND_Island"'):
+        doc.line('(layer "F.Cu")')
+        doc.line(f"(uuid {quuid()})")
+        doc.line(f"(at {x} {y})")
+        doc.embed(footprint_property("Reference", "GND1", 0, -1.0, 0, "F.SilkS", hide=True, font_size=(0.5, 0.5), thickness=0.08))
+        doc.embed(footprint_property("Value", "GND", 0, 1.0, 0, "F.Fab", hide=True, font_size=(0.5, 0.5), thickness=0.08))
+        doc.embed(_fp_hidden_fields())
+        doc.line("(attr board_only exclude_from_pos_files exclude_from_bom)")
+        doc.line("(duplicate_pad_numbers_are_jumpers no)")
+        doc.embed(fp_rect(-w / 2 - 0.15, -h / 2 - 0.15, w / 2 + 0.15, h / 2 + 0.15, "F.CrtYd", width=0.05))
         # Copper + mask only (no paste — local reference island, not a soldered land)
-        f'\t\t(pad "1" smd roundrect\n'
-        f'\t\t\t(at 0 0)\n'
-        f'\t\t\t(size {w} {h})\n'
-        f'\t\t\t(layers "F.Cu" "F.Mask")\n'
-        f'\t\t\t(roundrect_rratio 0.2)\n'
-        f'\t\t\t(net "GND")\n'
-        f'\t\t\t(uuid {quuid()})\n'
-        f'\t\t)',
-        "\t\t(embedded_fonts no)",
-        "\t)",
-    ]
-    return "\n".join(parts) + "\n"
+        with doc.node('(pad "1" smd roundrect'):
+            doc.line("(at 0 0)")
+            doc.line(f"(size {w} {h})")
+            doc.line('(layers "F.Cu" "F.Mask")')
+            doc.line("(roundrect_rratio 0.2)")
+            doc.line('(net "GND")')
+            doc.line(f"(uuid {quuid()})")
+        doc.line("(embedded_fonts no)")
+    return doc
 
 
 def write_gnd_island_footprint() -> None:
     w, h = GND_ISLAND_W_MM, GND_ISLAND_H_MM
     path = LIB / "footprints" / "NFC_BusinessCard.pretty" / "GND_Island.kicad_mod"
-    path.write_text(
-        f"""(footprint "GND_Island"
-\t(version {PCB_FORMAT_VERSION})
-\t(generator "nfc_business_card")
-\t(layer "F.Cu")
-\t(descr "Local VSS copper island for NT3H2111 (component strip only)")
-\t(tags "gnd vss nfc")
-\t(attr board_only exclude_from_pos_files exclude_from_bom)
-\t(fp_text reference "GND**" (at 0 -1.0) (layer "F.SilkS") (hide yes)
-\t\t(effects (font (size 0.5 0.5) (thickness 0.08)))
-\t)
-\t(fp_text value "GND" (at 0 1.0) (layer "F.Fab") (hide yes)
-\t\t(effects (font (size 0.5 0.5) (thickness 0.08)))
-\t)
-\t(fp_rect (start {-w / 2 - 0.15} {-h / 2 - 0.15}) (end {w / 2 + 0.15} {h / 2 + 0.15}) (layer "F.CrtYd") (stroke (width 0.05) (type solid)) (fill none))
-\t(pad "1" smd roundrect (at 0 0) (size {w} {h}) (layers "F.Cu" "F.Mask") (roundrect_rratio 0.2) (uuid {uid()}))
-)
-""",
-        encoding="utf-8",
-    )
+    doc = SexprDoc()
+    with doc.node('(footprint "GND_Island"'):
+        doc.line(f"(version {PCB_FORMAT_VERSION})")
+        doc.line('(generator "nfc_business_card")')
+        doc.line('(layer "F.Cu")')
+        doc.line('(descr "Local VSS copper island for NT3H2111 (component strip only)")')
+        doc.line('(tags "gnd vss nfc")')
+        doc.line("(attr board_only exclude_from_pos_files exclude_from_bom)")
+        with doc.node('(fp_text reference "GND**" (at 0 -1.0) (layer "F.SilkS") (hide yes)'):
+            doc.line("(effects (font (size 0.5 0.5) (thickness 0.08)))")
+        with doc.node('(fp_text value "GND" (at 0 1.0) (layer "F.Fab") (hide yes)'):
+            doc.line("(effects (font (size 0.5 0.5) (thickness 0.08)))")
+        doc.line(
+            f'(fp_rect (start {-w / 2 - 0.15} {-h / 2 - 0.15}) (end {w / 2 + 0.15} {h / 2 + 0.15}) '
+            f'(layer "F.CrtYd") (stroke (width 0.05) (type solid)) (fill none))'
+        )
+        doc.line(f'(pad "1" smd roundrect (at 0 0) (size {w} {h}) (layers "F.Cu" "F.Mask") (roundrect_rratio 0.2) (uuid {uid()}))')
+    path.write_text(doc.render() + "\n", encoding="utf-8")
 
 
-def build_r_footprint(ref: str, x: float, y: float, net_sig: str) -> str:
+def build_r_footprint(ref: str, x: float, y: float, net_sig: str) -> SexprDoc:
     """B.Cu DNP 100 kΩ: pad 1 (east) = NC net, pad 2 (west) = GND."""
-    parts = [
-        '\t(footprint "NFC_BusinessCard:R_0402_1005Metric"',
-        '\t\t(layer "B.Cu")',
-        f"\t\t(uuid {quuid()})",
-        f"\t\t(at {x} {y})",
-        footprint_property("Reference", ref, 0, -1.2, 0, "B.SilkS", hide=True, font_size=(0.6, 0.6), thickness=0.1),
-        footprint_property("Value", "DNP", 0, 1.2, 0, "B.Fab", font_size=(0.5, 0.5), thickness=0.08),
-        _fp_hidden_fields(description=f"{NC_TERM_R_KOHM}k NC pull-down"),
-        footprint_property("LCSC Part #", NC_TERM_R_LCSC, 0, 0, 0, "B.Fab", hide=True, font_size=(1.27, 1.27), thickness=0),
-        "\t\t(attr smd exclude_from_pos_files exclude_from_bom dnp)",
-        "\t\t(duplicate_pad_numbers_are_jumpers no)",
-        fp_rect(-1.0, -0.6, 1.0, 0.6, "B.CrtYd"),
-        fp_line(-0.1, -0.35, 0.1, -0.35, "B.Fab", width=0.1),
-        fp_line(-0.1, 0.35, 0.1, 0.35, "B.Fab", width=0.1),
-        fp_pad_roundrect("1", R0402_PAD_OFFSET_MM, 0, 0, 0.52, 0.62, net=net_sig, side="B", rratio=0.15),
-        fp_pad_roundrect("2", -R0402_PAD_OFFSET_MM, 0, 0, 0.52, 0.62, net="GND", side="B", rratio=0.15),
-        "\t\t(embedded_fonts no)",
-        "\t)",
-    ]
-    return "\n".join(parts) + "\n"
+    doc = SexprDoc()
+    with doc.node('(footprint "NFC_BusinessCard:R_0402_1005Metric"'):
+        doc.line('(layer "B.Cu")')
+        doc.line(f"(uuid {quuid()})")
+        doc.line(f"(at {x} {y})")
+        doc.embed(footprint_property("Reference", ref, 0, -1.2, 0, "B.SilkS", hide=True, font_size=(0.6, 0.6), thickness=0.1))
+        doc.embed(footprint_property("Value", "DNP", 0, 1.2, 0, "B.Fab", font_size=(0.5, 0.5), thickness=0.08))
+        doc.embed(_fp_hidden_fields(description=f"{NC_TERM_R_KOHM}k NC pull-down"))
+        doc.embed(footprint_property("LCSC Part #", NC_TERM_R_LCSC, 0, 0, 0, "B.Fab", hide=True, font_size=(1.27, 1.27), thickness=0))
+        doc.line("(attr smd exclude_from_pos_files exclude_from_bom dnp)")
+        doc.line("(duplicate_pad_numbers_are_jumpers no)")
+        doc.embed(fp_rect(-1.0, -0.6, 1.0, 0.6, "B.CrtYd"))
+        doc.embed(fp_line(-0.1, -0.35, 0.1, -0.35, "B.Fab", width=0.1))
+        doc.embed(fp_line(-0.1, 0.35, 0.1, 0.35, "B.Fab", width=0.1))
+        doc.embed(fp_pad_roundrect("1", R0402_PAD_OFFSET_MM, 0, 0, 0.52, 0.62, net=net_sig, side="B", rratio=0.15))
+        doc.embed(fp_pad_roundrect("2", -R0402_PAD_OFFSET_MM, 0, 0, 0.52, 0.62, net="GND", side="B", rratio=0.15))
+        doc.line("(embedded_fonts no)")
+    return doc
 
 
-def build_c1_footprint(x: float, y: float) -> str:
-    parts = [
-        '\t(footprint "NFC_BusinessCard:C_0402_1005Metric"',
-        '\t\t(layer "F.Cu")',
-        f"\t\t(uuid {quuid()})",
-        f"\t\t(at {x} {y})",
-        footprint_property("Reference", "C1", 0, -1.2, 0, "F.SilkS", hide=True, font_size=(0.6, 0.6), thickness=0.1),
-        footprint_property("Value", "DNP", 0, 1.2, 0, "F.Fab", font_size=(0.5, 0.5), thickness=0.08),
-        _fp_hidden_fields(),
-        footprint_property("LCSC Part #", C1_LCSC, 0, 0, 0, "F.Fab", hide=True, font_size=(1.27, 1.27), thickness=0),
-        "\t\t(attr smd exclude_from_pos_files exclude_from_bom dnp)",
-        "\t\t(duplicate_pad_numbers_are_jumpers no)",
-        fp_rect(-1.0, -0.6, 1.0, 0.6, "F.CrtYd"),
-        fp_line(-0.1, -0.35, 0.1, -0.35, "F.Fab", width=0.1),
-        fp_line(-0.1, 0.35, 0.1, 0.35, "F.Fab", width=0.1),
-        fp_pad_roundrect("1", -0.48, 0, 0, 0.52, 0.62, net="LA", rratio=0.15),
-        fp_pad_roundrect("2", 0.48, 0, 0, 0.52, 0.62, net="LB", rratio=0.15),
-        "\t\t(embedded_fonts no)",
-        "\t)",
-    ]
-    return "\n".join(parts) + "\n"
+def build_c1_footprint(x: float, y: float) -> SexprDoc:
+    doc = SexprDoc()
+    with doc.node('(footprint "NFC_BusinessCard:C_0402_1005Metric"'):
+        doc.line('(layer "F.Cu")')
+        doc.line(f"(uuid {quuid()})")
+        doc.line(f"(at {x} {y})")
+        doc.embed(footprint_property("Reference", "C1", 0, -1.2, 0, "F.SilkS", hide=True, font_size=(0.6, 0.6), thickness=0.1))
+        doc.embed(footprint_property("Value", "DNP", 0, 1.2, 0, "F.Fab", font_size=(0.5, 0.5), thickness=0.08))
+        doc.embed(_fp_hidden_fields())
+        doc.embed(footprint_property("LCSC Part #", C1_LCSC, 0, 0, 0, "F.Fab", hide=True, font_size=(1.27, 1.27), thickness=0))
+        doc.line("(attr smd exclude_from_pos_files exclude_from_bom dnp)")
+        doc.line("(duplicate_pad_numbers_are_jumpers no)")
+        doc.embed(fp_rect(-1.0, -0.6, 1.0, 0.6, "F.CrtYd"))
+        doc.embed(fp_line(-0.1, -0.35, 0.1, -0.35, "F.Fab", width=0.1))
+        doc.embed(fp_line(-0.1, 0.35, 0.1, 0.35, "F.Fab", width=0.1))
+        doc.embed(fp_pad_roundrect("1", -0.48, 0, 0, 0.52, 0.62, net="LA", rratio=0.15))
+        doc.embed(fp_pad_roundrect("2", 0.48, 0, 0, 0.52, 0.62, net="LB", rratio=0.15))
+        doc.line("(embedded_fonts no)")
+    return doc
 
 
 def write_pcb() -> None:
@@ -1244,35 +1232,44 @@ def write_pcb() -> None:
         for ref, net, rcx, rcy, _pad_x, _pad_y in nc_terminator_placements(lay["u1"])
     ]
 
-    content = "\n".join(
-        [
+    doc = SexprDoc()
+    with doc.node("(kicad_pcb"):
+        doc.embed(
             pcb_header(
                 title="NFC Business Card",
                 date="2026-07-14",
                 rev="B",
                 comment="89x51mm NT3H2111 — NFC on right, text zone left",
-            ),
-            pcb_layers(),
-            pcb_setup(),
-            build_u1_footprint(u1_x, u1_y),
-            build_ant_footprint(ant_cx, ant_cy, ant_pts),
-            build_c1_footprint(c1_x, c1_y),
-            build_gnd_island(lay["u1"]),
-            *r_fps,
-            name_copper.rstrip("\n"),
-            gr_line(tw, 0, tw, BOARD_H, "Dwgs.User", dash=True),
-            gr_line(lay["ant_x0"], 0, lay["ant_x0"], BOARD_H, "Dwgs.User", dash=True),
-            gr_rect(0, 0, BOARD_W, BOARD_H, "Edge.Cuts"),
-            silk_bitmaps.rstrip("\n"),
-            gr_text("TEXT ZONE (no copper)", tw / 2, 4, "Dwgs.User"),
-            gr_text("NFC", ant_cx, 4, "Dwgs.User"),
-            *segments,
-            *coil_segs,
-            *vias,
-            "\t(embedded_fonts yes)",
-            ")",
-        ]
-    ) + "\n"
+            )
+        )
+        doc.embed(pcb_layers())
+        doc.embed(pcb_setup())
+        doc.embed(build_u1_footprint(u1_x, u1_y))
+        doc.blank()
+        doc.embed(build_ant_footprint(ant_cx, ant_cy, ant_pts))
+        doc.blank()
+        doc.embed(build_c1_footprint(c1_x, c1_y))
+        doc.blank()
+        doc.embed(build_gnd_island(lay["u1"]))
+        doc.blank()
+        for fp in r_fps:
+            doc.embed(fp)
+            doc.blank()
+        doc.raw(name_copper)
+        doc.embed(gr_line(tw, 0, tw, BOARD_H, "Dwgs.User", dash=True))
+        doc.embed(gr_line(lay["ant_x0"], 0, lay["ant_x0"], BOARD_H, "Dwgs.User", dash=True))
+        doc.embed(gr_rect(0, 0, BOARD_W, BOARD_H, "Edge.Cuts"))
+        doc.embed(silk_bitmaps)
+        doc.embed(gr_text("TEXT ZONE (no copper)", tw / 2, 4, "Dwgs.User"))
+        doc.embed(gr_text("NFC", ant_cx, 4, "Dwgs.User"))
+        for s in segments:
+            doc.embed(s)
+        for s in coil_segs:
+            doc.embed(s)
+        for v in vias:
+            doc.embed(v)
+        doc.line("(embedded_fonts yes)")
+    content = doc.render() + "\n"
     (ROOT / "nfc-business-card.kicad_pcb").write_text(content, encoding="utf-8")
     write_antenna_footprint_sized(ant_w, ant_h)
 
@@ -1284,44 +1281,42 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
     takeoff_x = tie["takeoff_x"]
     w = tie["w"]
     fp_name = f"Antenna_Spiral_{outer_w:.0f}x{outer_h:.0f}_{TURNS}T"
-    lines = [
-        f'(footprint "{fp_name}"',
-        f'\t(version {PCB_FORMAT_VERSION})',
-        '\t(generator "nfc_business_card")',
-        '\t(layer "F.Cu")',
-        f'\t(descr "Rect spiral NFC antenna ~{outer_w:.0f}x{outer_h:.0f}mm {TURNS} turns {TRACE_W}/{GAP}; overlapping net-tie pads 1-2 (spiral = board tracks net LA)")',
-        '\t(tags "net tie nfc antenna spiral")',
-        '\t(attr exclude_from_pos_files exclude_from_bom allow_missing_courtyard)',
-        '\t(net_tie_pad_groups "1,2")',
-        '\t(fp_text reference "ANT**" (at 0 0) (layer "F.SilkS") (hide yes)',
-        '\t\t(effects (font (size 1 1) (thickness 0.15)))',
-        "\t)",
-        '\t(fp_text value "Antenna" (at 0 0) (layer "F.Fab") (hide yes)',
-        '\t\t(effects (font (size 1 1) (thickness 0.15)))',
-        "\t)",
-        fp_pad_connect_roundrect(
-            "1",
-            end_x + ANT_TIE_TAKEOFF_DX_MM / 2,
-            end_y,
-            ANT_TIE_TAKEOFF_DX_MM,
-            w,
-            net="LA",
-            indent="\t",
-        ),
-        fp_pad_connect_roundrect(
-            "2",
-            takeoff_x,
-            end_y + ANT_TIE_VIA_DY_MM / 2,
-            w,
-            ANT_TIE_VIA_DY_MM,
-            net="LB",
-            indent="\t",
-        ),
-        ")",
-    ]
+    doc = SexprDoc()
+    with doc.node(f'(footprint "{fp_name}"'):
+        doc.line(f"(version {PCB_FORMAT_VERSION})")
+        doc.line('(generator "nfc_business_card")')
+        doc.line('(layer "F.Cu")')
+        doc.line(f'(descr "Rect spiral NFC antenna ~{outer_w:.0f}x{outer_h:.0f}mm {TURNS} turns {TRACE_W}/{GAP}; overlapping net-tie pads 1-2 (spiral = board tracks net LA)")')
+        doc.line('(tags "net tie nfc antenna spiral")')
+        doc.line("(attr exclude_from_pos_files exclude_from_bom allow_missing_courtyard)")
+        doc.line('(net_tie_pad_groups "1,2")')
+        with doc.node('(fp_text reference "ANT**" (at 0 0) (layer "F.SilkS") (hide yes)'):
+            doc.line("(effects (font (size 1 1) (thickness 0.15)))")
+        with doc.node('(fp_text value "Antenna" (at 0 0) (layer "F.Fab") (hide yes)'):
+            doc.line("(effects (font (size 1 1) (thickness 0.15)))")
+        doc.embed(
+            fp_pad_connect_roundrect(
+                "1",
+                end_x + ANT_TIE_TAKEOFF_DX_MM / 2,
+                end_y,
+                ANT_TIE_TAKEOFF_DX_MM,
+                w,
+                net="LA",
+            )
+        )
+        doc.embed(
+            fp_pad_connect_roundrect(
+                "2",
+                takeoff_x,
+                end_y + ANT_TIE_VIA_DY_MM / 2,
+                w,
+                ANT_TIE_VIA_DY_MM,
+                net="LB",
+            )
+        )
     pretty = LIB / "footprints" / "NFC_BusinessCard.pretty"
     path = pretty / f"{fp_name}.kicad_mod"
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    path.write_text(doc.render() + "\n", encoding="utf-8")
     # Drop legacy misnamed footprint if present
     legacy = pretty / "Antenna_Spiral_84x46_4T.kicad_mod"
     if legacy.exists() and legacy.resolve() != path.resolve():
@@ -1352,22 +1347,16 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
 
 
 def write_fp_lib_table() -> None:
-    (ROOT / "fp-lib-table").write_text(
-        f"""(fp_lib_table
-\t(version 7)
-\t(lib (name "NFC_BusinessCard")(type "KiCad")(uri "${{KIPRJMOD}}/lib/footprints/NFC_BusinessCard.pretty")(options "")(descr "NFC business card footprints"))
-)
-""",
-        encoding="utf-8",
-    )
-    (ROOT / "sym-lib-table").write_text(
-        f"""(sym_lib_table
-\t(version 7)
-\t(lib (name "NFC_BusinessCard")(type "KiCad")(uri "${{KIPRJMOD}}/lib/symbols/NFC_BusinessCard.kicad_sym")(options "")(descr "NFC business card symbols"))
-)
-""",
-        encoding="utf-8",
-    )
+    doc = SexprDoc()
+    with doc.node("(fp_lib_table"):
+        doc.line("(version 7)")
+        doc.line('(lib (name "NFC_BusinessCard")(type "KiCad")(uri "${KIPRJMOD}/lib/footprints/NFC_BusinessCard.pretty")(options "")(descr "NFC business card footprints"))')
+    (ROOT / "fp-lib-table").write_text(doc.render() + "\n", encoding="utf-8")
+    doc = SexprDoc()
+    with doc.node("(sym_lib_table"):
+        doc.line("(version 7)")
+        doc.line('(lib (name "NFC_BusinessCard")(type "KiCad")(uri "${KIPRJMOD}/lib/symbols/NFC_BusinessCard.kicad_sym")(options "")(descr "NFC business card symbols"))')
+    (ROOT / "sym-lib-table").write_text(doc.render() + "\n", encoding="utf-8")
 
 
 def main() -> None:

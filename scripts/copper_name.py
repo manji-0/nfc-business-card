@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from fonts import FontFile, font_file
 from jlcpcb_limits import JLC_MIN_MASK_BRIDGE_MM
 from kicad10 import gr_poly_copper
+from sexpr import SexprDoc
 from silk_layout import NAME_CAP_HEIGHT_MM, NAME_DILATE_K, NAME_FONT_FACE
 
 NAME_FONT = font_file(NAME_FONT_FACE)
@@ -140,8 +141,11 @@ def name_copper_rects_mm(
 
 
 def copper_rects_to_sexpr(rects_mm: list[tuple[float, float, float, float]]) -> str:
-    parts = [gr_poly_copper(x0, y0, x1, y1) for x0, y0, x1, y1 in rects_mm]
-    return "\n".join(parts) + ("\n" if parts else "")
+    doc = SexprDoc(start_depth=1)  # top-level PCB elements
+    for rect in rects_mm:
+        doc.embed(gr_poly_copper(*rect))
+    text = doc.render()
+    return text + ("\n" if text else "")
 
 
 def build_name_copper_sexpr(

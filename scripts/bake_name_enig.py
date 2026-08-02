@@ -12,6 +12,7 @@ from kamae.types import Mm
 from kicad10 import build_name_enig_sexpr
 from layout_metrics import name_ink_bounds_mm
 from name_render_cache import align_gr_text_block_left, fit_gr_text_block_width
+from sexpr import SexprDoc
 from silk_layout import (
     NAME_CAP_HEIGHT_MM,
     NAME_FONT_FACE,
@@ -77,13 +78,18 @@ def bake_name_enig_sexpr(
             return sexpr
         case Err(error=detail):
             warnings.warn(f"{detail}; falling back to KiCad stroke font for ENIG name", stacklevel=2)
-            return build_name_enig_sexpr(
-                text,
-                x_mm=x_mm,
-                y_mm=y_mm,
-                size_mm=size_mm,
-                thickness_mm=NAME_TEXT_THICKNESS_MM,
+            # Top-level PCB elements live at depth 1 (matches pcbnew save format).
+            doc = SexprDoc(start_depth=1)
+            doc.embed(
+                build_name_enig_sexpr(
+                    text,
+                    x_mm=x_mm,
+                    y_mm=y_mm,
+                    size_mm=size_mm,
+                    thickness_mm=NAME_TEXT_THICKNESS_MM,
+                )
             )
+            return doc.render()
 
 
 if __name__ == "__main__":

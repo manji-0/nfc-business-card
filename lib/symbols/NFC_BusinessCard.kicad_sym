@@ -178,7 +178,8 @@
 		(property "Footprint" "" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
 		(symbol "GND_0_1"
 			(polyline (pts (xy 0 0) (xy 0 -1.27) (xy 1.27 -1.27) (xy 0 -2.54) (xy -1.27 -1.27) (xy 0 -1.27))
-				(stroke (width 0) (type default)) (fill (type none)))
+				(stroke (width 0) (type default)) (fill (type none))
+			)
 		)
 		(symbol "GND_1_1"
 			(pin power_in line (at 0 0 0) (length 0) (name "GND" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
