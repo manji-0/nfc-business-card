@@ -48,7 +48,11 @@ TASKS: dict[str, Task] = {
     ),
     "project": Task("project", "KiCad project + PCB", ("generate_kicad_project.py",)),
     "preview": Task("preview", "Photoreal mockup (fab/preview.png)", ("render_preview.py",)),
-    "check": Task("check", "Layout geometry checks", ("check_layout.py",)),
+    "check": Task(
+        "check",
+        "Component + layout + KiCad CLI checks",
+        ("check_components.py", "check_layout.py", "check_kicad_cli.py"),
+    ),
     "fab": Task("fab", "Gerbers, BOM, CPL, JLC zip", ("export_fab.py",)),
     "design": Task(
         "design",
@@ -60,7 +64,9 @@ TASKS: dict[str, Task] = {
             "make_text_silk.py",
             "generate_kicad_project.py",
             "render_preview.py",
+            "check_components.py",
             "check_layout.py",
+            "check_kicad_cli.py",
         ),
     ),
     "export": Task(
@@ -73,7 +79,9 @@ TASKS: dict[str, Task] = {
             "make_text_silk.py",
             "generate_kicad_project.py",
             "render_preview.py",
+            "check_components.py",
             "check_layout.py",
+            "check_kicad_cli.py",
             "export_fab.py",
         ),
     ),
