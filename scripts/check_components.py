@@ -118,7 +118,7 @@ def _check_nc_terminators() -> list[ComponentIssue]:
                 f"(NC_TERM_R_KOHM={NC_TERM_R_KOHM})",
             )
         )
-    refs = [ref for ref, _net, _dx, _dy in NC_TERMINATORS]
+    refs = [term.ref for term in NC_TERMINATORS]
     if refs != ["R2", "R4", "R3", "R5", "R6"]:
         issues.append(ComponentIssue("component", f"Unexpected NC terminator refs: {refs}"))
     pcb = (ROOT / "nfc-business-card.kicad_pcb").read_text(encoding="utf-8")

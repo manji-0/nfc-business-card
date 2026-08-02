@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import math
 import uuid
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -97,59 +98,86 @@ TURNS = 5  # ~1.9–2.1 µH → ~15–16 MHz with 50 pF alone; C1 DNP for first-
 C1_LCSC = "C301961"  # Walsin 0402N100J500CT 10 pF NP0 — primary tuning cap
 FEED_TRACE_W = FEED_TRACE_W_MM
 # NC pins terminated to VSS via DNP 100 kΩ on B.Cu (R2–R6)
-NC_TERMINATORS: tuple[tuple[str, str, float, float], ...] = (
-    ("R2", "SCL", -0.75, -0.20),
-    ("R4", "FD", -0.20, -0.75),
-    ("R3", "SDA", 0.20, -0.75),
-    ("R5", "VCC", 0.75, -0.20),
-    ("R6", "VOUT", 0.75, 0.20),
+
+
+@dataclass(frozen=True, slots=True)
+class NcTerminator:
+    """One DNP pull-down resistor: reference, NC net, U1-relative pad offset."""
+
+    ref: str
+    net: str
+    pad_dx: float
+    pad_dy: float
+
+
+@dataclass(frozen=True, slots=True)
+class NcFanout:
+    """Per-net NC fan-out: F.Cu stub → via → B.Cu jog to column → south row.
+
+    Columns west→east / rows north→south so HV routes on B.Cu never cross.
+    """
+
+    pad: tuple[float, float]
+    stub: tuple[tuple[float, float], ...]
+    via: tuple[float, float]
+    col: float
+    row: float
+    narrow: bool = False
+    bc_via_y: float | None = None
+
+
+NC_TERMINATORS: tuple[NcTerminator, ...] = (
+    NcTerminator("R2", "SCL", -0.75, -0.20),
+    NcTerminator("R4", "FD", -0.20, -0.75),
+    NcTerminator("R3", "SDA", 0.20, -0.75),
+    NcTerminator("R5", "VCC", 0.75, -0.20),
+    NcTerminator("R6", "VOUT", 0.75, 0.20),
 )
 # NC fan-out: short F.Cu stub → via → B.Cu (jog to col) → south → R pad 1.
-# Columns west→east / rows north→south so HV routes on B.Cu never cross.
 # VOUT enters via a north B.Cu lane (above other NC vias) then joins the
 # easternmost west-channel column.
-NC_FANOUT: dict[str, dict] = {
-    "SCL": {
-        "pad": (-0.75, -0.20),
-        "stub": [(-0.75, -0.20), (-2.00, -0.20), (-2.00, -0.85)],
-        "via": (-2.00, -0.85),
-        "col": -2.00,  # abs 51.50
-        "row": 4.80,
-        "narrow": True,
-    },
-    "FD": {
-        "pad": (-0.20, -0.75),
-        "stub": [(-0.20, -0.75), (-1.30, -0.75), (-1.30, -1.55)],
-        "via": (-1.30, -1.55),
-        "col": -1.30,  # abs 52.20
-        "row": 6.00,
-        "narrow": True,
-    },
-    "SDA": {
-        "pad": (0.20, -0.75),
-        "stub": [(0.20, -0.75), (1.05, -0.75), (1.05, -2.25)],
-        "via": (1.05, -2.25),
-        "col": -0.60,  # abs 52.90
-        "row": 7.20,
-        "narrow": True,
-    },
-    "VCC": {
-        "pad": (0.75, -0.20),
-        "stub": [(0.75, -0.20), (1.70, -0.20), (1.70, -1.20)],
-        "via": (1.70, -1.20),
-        "col": 0.10,  # abs 53.60
-        "row": 8.40,
-        "narrow": True,
-    },
-    "VOUT": {
-        "pad": (0.75, 0.20),
-        "stub": [(0.75, 0.20), (2.30, 0.20), (2.30, -0.05)],
-        "via": (2.30, -0.05),
-        "col": 2.30,  # abs 55.80
-        "row": 9.60,
-        "narrow": True,
-        "bc_via_y": -2.80,  # north jog lane above other NC vias
-    },
+NC_FANOUT: dict[str, NcFanout] = {
+    "SCL": NcFanout(
+        pad=(-0.75, -0.20),
+        stub=((-0.75, -0.20), (-2.00, -0.20), (-2.00, -0.85)),
+        via=(-2.00, -0.85),
+        col=-2.00,  # abs 51.50
+        row=4.80,
+        narrow=True,
+    ),
+    "FD": NcFanout(
+        pad=(-0.20, -0.75),
+        stub=((-0.20, -0.75), (-1.30, -0.75), (-1.30, -1.55)),
+        via=(-1.30, -1.55),
+        col=-1.30,  # abs 52.20
+        row=6.00,
+        narrow=True,
+    ),
+    "SDA": NcFanout(
+        pad=(0.20, -0.75),
+        stub=((0.20, -0.75), (1.05, -0.75), (1.05, -2.25)),
+        via=(1.05, -2.25),
+        col=-0.60,  # abs 52.90
+        row=7.20,
+        narrow=True,
+    ),
+    "VCC": NcFanout(
+        pad=(0.75, -0.20),
+        stub=((0.75, -0.20), (1.70, -0.20), (1.70, -1.20)),
+        via=(1.70, -1.20),
+        col=0.10,  # abs 53.60
+        row=8.40,
+        narrow=True,
+    ),
+    "VOUT": NcFanout(
+        pad=(0.75, 0.20),
+        stub=((0.75, 0.20), (2.30, 0.20), (2.30, -0.05)),
+        via=(2.30, -0.05),
+        col=2.30,  # abs 55.80
+        row=9.60,
+        narrow=True,
+        bc_via_y=-2.80,  # north jog lane above other NC vias
+    ),
 }
 # Stable root schematic UUID — reused in .kicad_pro sheets and symbol instance paths.
 SCHEMATIC_ROOT_UUID = "db0e1d12-1252-490b-9c29-4e9a9001ab69"
@@ -317,14 +345,14 @@ def nc_terminator_placements(
     rcx = u1_x + NC_R_COL_DX_MM
     return [
         (
-            ref,
-            net,
+            term.ref,
+            term.net,
             rcx,
-            u1_y + NC_FANOUT[net]["row"],
-            u1_x + NC_FANOUT[net]["pad"][0],
-            u1_y + NC_FANOUT[net]["pad"][1],
+            u1_y + NC_FANOUT[term.net].row,
+            u1_x + NC_FANOUT[term.net].pad[0],
+            u1_y + NC_FANOUT[term.net].pad[1],
         )
-        for ref, net, _dx, _dy in NC_TERMINATORS
+        for term in NC_TERMINATORS
     ]
 
 
@@ -347,20 +375,21 @@ def nc_terminator_routes(
     vias: list[tuple[float, float, str, float, float]] = []
     rows: list[float] = []
 
-    for _ref, net, _dx, _dy in NC_TERMINATORS:
+    for term in NC_TERMINATORS:
+        net = term.net
         f = NC_FANOUT[net]
-        vx, vy = u1_x + f["via"][0], u1_y + f["via"][1]
-        col_x = u1_x + f["col"]
-        rcy = u1_y + f["row"]
-        stub_w = wn if f.get("narrow") else w
+        vx, vy = u1_x + f.via[0], u1_y + f.via[1]
+        col_x = u1_x + f.col
+        rcy = u1_y + f.row
+        stub_w = wn if f.narrow else w
         vias.append((vx, vy, net, NC_VIA_SIZE_MM, NC_VIA_DRILL_MM))
-        stub = [(u1_x + x, u1_y + y) for x, y in f["stub"]]
+        stub = [(u1_x + x, u1_y + y) for x, y in f.stub]
         segs += [(*a, *b, net, stub_w, "F.Cu") for a, b in zip(stub, stub[1:])]
         # B.Cu: optional north jog into a clear lane, then to column, south, to pad 1.
         # Skip duplicate points (e.g. VOUT via.x == col.x) to avoid zero-length tracks.
         bc_pts = [(vx, vy)]
-        if "bc_via_y" in f:
-            lane_y = u1_y + f["bc_via_y"]
+        if f.bc_via_y is not None:
+            lane_y = u1_y + f.bc_via_y
             bc_pts.append((vx, lane_y))
             if abs(col_x - vx) > 1e-9:
                 bc_pts.append((col_x, lane_y))
