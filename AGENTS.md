@@ -88,6 +88,10 @@ JLCPCB 下限は `scripts/jlcpcb_limits.py` を参照。設計値は JLC 最小�
 | フォント（face 名 → TTF パス） | `scripts/fonts.py`（face 名は `silk_layout.py` の `NAME_FONT_FACE` / `SILK_FONT_FACE`） |
 | JLC 最小/feature | `scripts/jlcpcb_limits.py` |
 | アンテナターン数・配線 | `scripts/generate_kicad_project.py`（`nfc_layout()`） |
+| アンテナ螺旋ポリライン・L 推定 | `scripts/antenna_model.py`（`rectangular_spiral()` / `estimate_l_uh()` — generator・check・tuner 共通） |
+| XQFN-8 パッド形状 | `scripts/xqfn_geometry.py`（`XQFN_PADS` — フットプリント・PCB・検査共通） |
+| シンボル定義（`.kicad_sym` / 回路図埋め込み lib_symbols） | `scripts/symbol_lib.py`（`Sexpr` ツリー — 2 形式を同一ツリーから描画） |
+| S-expression 出力 | `scripts/sexpr.py`（`SexprDoc` / `render_sexpr` — タブはネスト深さから自動付与）・`scripts/kicad10.py` |
 
 ### 再生成コマンド
 
@@ -116,6 +120,8 @@ KiCad 10 が `/Applications/KiCad/` に必要（氏名の TTF ベイク）。無
 5. **PII** — メールは `Sensitive` でラップ（ログに出さない）
 
 レイアウト計算は純関数に保ち、subprocess（pcbnew）・ファイル書き込みはパイプライン末端に集約する。
+
+S-expression 出力は `scripts/sexpr.py` がタブの単一源。`SexprDoc`（命令的 — `node()` / `line()` / `embed()` でネスト深さ = タブ数）で PCB・回路図・フットプリントを組み立て、シンボル定義は宣言的 `Sexpr` ツリー（`render_sexpr` が `.kicad_sym` の複数行形式と回路図埋め込みの 1 行形式を同一ツリーから描画）。**`\t` を手書きしない**。ヘルパーは相対 `SexprDoc` を返し、呼び出し側が `embed()` で深さを決める。
 
 ## 6. やってはいけないこと
 
