@@ -10,6 +10,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from card_copy import NAME  # noqa: E402
+from copper_checks import (  # noqa: E402
+    check_geometry,
+    check_pcb_file,
+    known_crossing_pairs,
+)
 from generate_kicad_project import (  # noqa: E402
     BOARD_H,
     BOARD_W,
@@ -377,6 +382,72 @@ for rel in [
 ]:
     if not (ROOT / rel).exists():
         warnings.append(f"Missing {rel}")
+
+# --- Exhaustive copper: generator geometry + on-disk PCB ----------------
+nc_segs, nc_via_raw = nc_terminator_routes(lay["u1"])
+gnd_segs = gnd_island_route(lay["u1"])
+gen_segs = coil + list(routes) + list(nc_segs) + list(gnd_segs)
+gen_vias: list[tuple[float, float, str, float, float]] = []
+for item in nc_via_raw:
+    if len(item) == 3:
+        vx, vy, vnet = item
+        gen_vias.append((vx, vy, vnet, 0.5, 0.3))
+    else:
+        vx, vy, vnet, size, drill = item
+        gen_vias.append((vx, vy, vnet, size, drill))
+
+xqfn_pad_rects = []
+for num, (px, py, rot, pad_net) in xqfn_pads.items():
+    x0, y0, x1, y1 = pad_bbox(u1_x + px, u1_y + py, rot)
+    xqfn_pad_rects.append((x0, y0, x1, y1, pad_net, "F.Cu"))
+
+# Net-tie LA/LB overlap is intentional; do not allow other cross-net pairs.
+allow_tie = {("LA", "LB")}
+gen_result = check_geometry(
+    gen_segs,
+    gen_vias,
+    xqfn_pad_rects,
+    design_clearance=DESIGN_TRACE_CLEARANCE_MM,
+    hole_clearance=0.25,
+    jlc_min=JLC_MIN_TRACE_CLEARANCE_MM,
+    board_w=BOARD_W,
+    board_h=BOARD_H,
+    text_zone_w=TEXT_ZONE_W,
+    ant_left=lay["ant_x0"],
+    feed_half_w=FEED_TRACE_W_MM / 2,
+    allow_net_pairs=allow_tie,
+)
+if gen_result.kind == "err":
+    for issue in gen_result.error:
+        errors.append(f"copper(gen) [{issue.kind}] {issue.message}")
+else:
+    print("OK: generator copper — no cross-net crossings, design clearance ≥ 0.20 mm")
+
+pcb_path = ROOT / "nfc-business-card.kicad_pcb"
+if pcb_path.is_file():
+    pcb_result = check_pcb_file(
+        pcb_path,
+        design_clearance=DESIGN_TRACE_CLEARANCE_MM,
+        hole_clearance=0.25,
+        jlc_min=JLC_MIN_TRACE_CLEARANCE_MM,
+        board_w=BOARD_W,
+        board_h=BOARD_H,
+        text_zone_w=TEXT_ZONE_W,
+        ant_left=lay["ant_x0"],
+        feed_half_w=FEED_TRACE_W_MM / 2,
+        pads=xqfn_pad_rects,
+    )
+    if pcb_result.kind == "err":
+        for issue in pcb_result.error:
+            errors.append(f"copper(pcb) [{issue.kind}] {issue.message}")
+        pairs = known_crossing_pairs(pcb_result.error)
+        required = {("LA", "VOUT"), ("GND", "VOUT")}
+        if not required.issubset(pairs) and not pairs:
+            errors.append(
+                f"copper(pcb) failed to detect expected crossings {sorted(required)}"
+            )
+    else:
+        print("OK: PCB copper — no cross-net crossings, design clearance ≥ 0.20 mm")
 
 if warnings:
     print("Warnings:")
