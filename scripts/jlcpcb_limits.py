@@ -12,8 +12,10 @@ DESIGN_TRACE_CLEARANCE_MM = 0.20
 DESIGN_MIN_FEATURE_MM = 0.18
 
 # LA/LB feed buses: pad centers fixed at ±0.20 mm (XQFN pitch)
-# Matches antenna trace width so the LA/LB connection has no width step.
-# 0.40 mm pitch − 0.25 mm trace = 0.15 mm gap (JLC min 0.127 OK; below 0.20 design target)
+# Buses stay at the antenna trace width so the LA/LB connection has no width
+# step. Only the co-located bus columns (0.40 mm pitch) narrow to the XQFN ROW
+# width so the parallel pair clears the 0.20 mm design target:
+# 0.40 mm pitch − 0.18 mm bus = 0.22 mm gap (JLC min 0.127, design target 0.20).
 FEED_BUS_PITCH_MM = 0.40
 FEED_BUS_HALF_PITCH_MM = 0.20
 FEED_TRACE_W_MM = 0.25
@@ -29,6 +31,9 @@ XQFN_PITCH_MM = 0.40
 XQFN_PAD_ROW_MM = 0.18
 XQFN_PAD_EDGE_MM = 0.42
 XQFN_COURTYARD_HALF_MM = 1.2
+# Bus width where two feeds share the 0.40 mm pad pitch: match the XQFN pad
+# width (no step at the land) and widen the bus-to-bus gap (0.40 − 0.18 = 0.22).
+FEED_BUS_W_MM = XQFN_PAD_ROW_MM
 
 # Antenna spiral: 0.25 mm trace, 0.30 mm gap between turns
 ANTENNA_TRACE_W_MM = 0.25

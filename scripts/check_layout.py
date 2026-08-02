@@ -39,6 +39,7 @@ from jlcpcb_limits import (  # noqa: E402
     DESIGN_MASK_BRIDGE_MM,
     DESIGN_TRACE_CLEARANCE_MM,
     FEED_BUS_HALF_PITCH_MM,
+    FEED_BUS_W_MM,
     FEED_LA_BYPASS_DX_MM,
     FEED_TRACE_W_MM,
     FEED_VIA_DRILL_MM,
@@ -144,7 +145,7 @@ if not la_on_edge:
 
 la_bus = u1[0] - FEED_BUS_HALF_PITCH_MM
 lb_bus = u1[0] + FEED_BUS_HALF_PITCH_MM
-bus_gap = lb_bus - la_bus - FEED_TRACE_W_MM
+bus_gap = lb_bus - la_bus - FEED_BUS_W_MM  # buses narrow to XQFN ROW on 0.40 pitch
 if bus_gap < JLC_MIN_TRACE_CLEARANCE_MM:
     errors.append(f"LA/LB bus gap {bus_gap:.3f} mm < JLC min {JLC_MIN_TRACE_CLEARANCE_MM} mm")
 elif bus_gap < DESIGN_TRACE_CLEARANCE_MM:

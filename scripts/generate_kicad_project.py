@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import math
 import uuid
+from datetime import date
 from pathlib import Path
 
 from card_copy import NAME
@@ -16,6 +17,7 @@ from jlcpcb_limits import (
     ANTENNA_GAP_MM,
     ANTENNA_TRACE_W_MM,
     FEED_BUS_HALF_PITCH_MM,
+    FEED_BUS_W_MM,
     FEED_LA_TAKEOFF_DX_MM,
     FEED_TRACE_W_MM,
     FEED_VIA_OUT_DX_MM,
@@ -242,6 +244,7 @@ def feed_routes(
     c1_la = (c1_x - 0.48, c1_y)
     c1_lb = (c1_x + 0.48, c1_y)
     w = FEED_TRACE_W
+    wb = FEED_BUS_W_MM
     # Inner via: step into spiral hollow; outer via: component strip east of U1
     via_in = (ant2_abs[0] + ANT_TIE_TAKEOFF_DX_MM, ant2_abs[1] + ANT_TIE_VIA_DY_MM)
     via_out = (u1_x + FEED_VIA_OUT_DX_MM, pad_y + FEED_VIA_OUT_DY_MM)
@@ -257,17 +260,18 @@ def feed_routes(
         (ant1_abs[0], ant1_abs[1], la_rise_x, ant1_abs[1], "LA", w, "F.Cu"),
         (la_rise_x, ant1_abs[1], la_rise_x, la_skirt_y, "LA", w, "F.Cu"),
         (la_rise_x, la_skirt_y, la_x, la_skirt_y, "LA", w, "F.Cu"),
-        (la_x, la_skirt_y, la_x, pad_y, "LA", w, "F.Cu"),
+        # LA/LB buses share 0.40 mm pitch: narrow to XQFN ROW so gap ≥ 0.20.
+        (la_x, la_skirt_y, la_x, pad_y, "LA", wb, "F.Cu"),
         # LA from C1 (above chip — la_x vertical is clear of FD)
         (c1_la[0], c1_la[1], la_x, c1_la[1], "LA", w, "F.Cu"),
-        (la_x, c1_la[1], la_x, pad_y, "LA", w, "F.Cu"),
+        (la_x, c1_la[1], la_x, pad_y, "LA", wb, "F.Cu"),
         # LB antenna: B.Cu to via_out (east of VOUT), F.Cu west over VOUT,
         # B.Cu south under LA skirt, F.Cu stub to pad 8.
         (via_in[0], via_in[1], via_out[0], via_in[1], "LB", w, "B.Cu"),
         (via_out[0], via_in[1], via_out[0], via_out[1], "LB", w, "B.Cu"),
         (via_out[0], via_out[1], lb_north[0], lb_north[1], "LB", w, "F.Cu"),
         (lb_north[0], lb_north[1], lb_exit[0], lb_exit[1], "LB", w, "B.Cu"),
-        (lb_exit[0], lb_exit[1], lb_x, pad_y, "LB", w, "F.Cu"),
+        (lb_exit[0], lb_exit[1], lb_x, pad_y, "LB", wb, "F.Cu"),
         # LB from C1: F.Cu to underpass column, B.Cu south into lb_exit
         (c1_lb[0], c1_lb[1], c1_lb_via[0], c1_lb_via[1], "LB", w, "F.Cu"),
         (c1_lb_via[0], c1_lb_via[1], lb_exit[0], lb_exit[1], "LB", w, "B.Cu"),
@@ -887,15 +891,18 @@ def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
     """R2–R6 as a spaced vertical DNP bank under U1 to one GND rail.
 
     Same-side U1 pins share an X, so resistors cannot sit on the pin column —
-    place them on a 5.08 mm pitch row and jog from each pin.
+    place every R column OUTSIDE the U1 body span so no vertical/jog crosses
+    the symbol rectangle: left columns ≤ pin column (116.84), right columns
+    ≥ pin column (137.16). One net per side keeps its pin column; the other
+    jogs one pitch outward and drops clear of the body.
     """
-    # L→R under U1 on a 5.08 mm pitch (same-side pins share X; Rs must not).
+    # L→R: FD/SCL left of the body, SDA/VCC/VOUT right of the body.
     placements = (
-        ("R4", "FD", U1_SCH_X - 2 * 5.08),
-        ("R2", "SCL", U1_SCH_X - 5.08),
-        ("R3", "SDA", U1_SCH_X),
-        ("R5", "VCC", U1_SCH_X + 5.08),
-        ("R6", "VOUT", U1_SCH_X + 2 * 5.08),
+        ("R4", "FD", U1_SCH_X - 3 * 5.08),   # 111.76 — jog L of body
+        ("R2", "SCL", U1_SCH_X - 2 * 5.08),  # 116.84 — left pin column
+        ("R3", "SDA", U1_SCH_X + 2 * 5.08),  # 137.16 — right pin column
+        ("R5", "VCC", U1_SCH_X + 3 * 5.08),  # 142.24 — jog R of body
+        ("R6", "VOUT", U1_SCH_X + 4 * 5.08),  # 147.32 — jog R of body
     )
     ry = _sch_snap(U1_SCH_Y + R_BELOW_DY)
     pin1_y = _sch_snap(ry - R_SCH_PIN_SPAN)
@@ -930,15 +937,20 @@ def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
 \t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "{ref}") (unit 1))))
 \t)"""
         )
-        # Orthogonal jog at the pin's own Y — never share a horizontal across nets.
-        if abs(px - rx) > 1e-9:
-            lines.append(_sch_wire(px, py, rx, py))
-        lines.append(_sch_wire(rx, py, rx, pin1_y))
-        # Outbound stub + label on the pin (net name for PCB parity).
-        lab_x = _sch_snap(px + (-5.08 if px < U1_SCH_X else 5.08))
-        lines.append(_sch_wire(px, py, lab_x, py))
+        # Outward jog at the pin's own Y (never shares a horizontal across nets),
+        # then drop clear of the body. The net label sits on the outward
+        # jog/stub so the pin↔net link is readable in one glance.
         ang = 180 if px < U1_SCH_X else 0
         lab_just = "right" if px < U1_SCH_X else "left"
+        if abs(px - rx) > 1e-9:
+            # pin-column drop impossible (jogs outward) → label on the jog
+            lines.append(_sch_wire(px, py, rx, py))
+            lab_x = _sch_snap((px + rx) / 2)
+        else:
+            # pin column drop at the R column → short outward label stub
+            lab_x = _sch_snap(px + (-2.54 if px < U1_SCH_X else 2.54))
+            lines.append(_sch_wire(px, py, lab_x, py))
+        lines.append(_sch_wire(rx, py, rx, pin1_y))
         lines.append(_sch_label(net, lab_x, py, ang, lab_just))
         lines.append(_sch_wire(rx, pin2_y, rx, GND_SCH_Y))
 
@@ -946,30 +958,47 @@ def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
     # so segment the rail at every resistor X and at the VSS/GND junction.
     x0, x1 = min(rail_xs), max(rail_xs)
     vss_x, vss_y = _u1_sch_pin_xy("VSS")
-    drop_x = _sch_snap(x0 - 2 * SCH_G)
-    gnd_x = drop_x
-    lines.append(_sch_wire(vss_x, vss_y, drop_x, vss_y))
-    lines.append(_sch_wire(drop_x, vss_y, drop_x, GND_SCH_Y))
-    rail_nodes = sorted({_sch_snap(x) for x in (*rail_xs, gnd_x)})
+    gnd0_x = _sch_snap(x0 - 2 * SCH_G)
+    gnd1_x = _sch_snap(x1 + 2 * SCH_G)
+    lines.append(_sch_wire(vss_x, vss_y, gnd0_x, vss_y))
+    lines.append(_sch_wire(gnd0_x, vss_y, gnd0_x, GND_SCH_Y))
+    rail_nodes = sorted({_sch_snap(x) for x in (*rail_xs, gnd0_x, gnd1_x)})
     for a, b in zip(rail_nodes, rail_nodes[1:]):
         lines.append(_sch_wire(a, GND_SCH_Y, b, GND_SCH_Y))
-    flag_x = _sch_snap(gnd_x - SCH_G)
-    lines.append(_sch_wire(flag_x, GND_SCH_Y, gnd_x, GND_SCH_Y))
+    flag_x = _sch_snap(gnd0_x - SCH_G)
+    lines.append(_sch_wire(flag_x, GND_SCH_Y, gnd0_x, GND_SCH_Y))
     lines.append(
         f"""\t(symbol
 \t\t(lib_id "NFC_BusinessCard:GND")
-\t\t(at {gnd_x} {GND_SCH_Y} 0)
+\t\t(at {gnd0_x} {GND_SCH_Y} 0)
 \t\t(unit 1)
 \t\t(exclude_from_sim no)
 \t\t(in_bom no)
 \t\t(on_board no)
 \t\t(dnp no)
 \t\t(uuid {uid()})
-\t\t(property "Reference" "#PWR01" (at {gnd_x} {GND_SCH_Y + 5.08} 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Value" "GND" (at {gnd_x} {GND_SCH_Y + 3.81} 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Footprint" "" (at {gnd_x} {GND_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Reference" "#PWR01" (at {gnd0_x} {GND_SCH_Y + 5.08} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Value" "GND" (at {gnd0_x} {GND_SCH_Y + 3.81} 0) (effects (font (size 1.27 1.27))))
+\t\t(property "Footprint" "" (at {gnd0_x} {GND_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
 \t\t(pin "1" (uuid {uid()}))
 \t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#PWR01") (unit 1))))
+\t)"""
+    )
+    lines.append(
+        f"""\t(symbol
+\t\t(lib_id "NFC_BusinessCard:GND")
+\t\t(at {gnd1_x} {GND_SCH_Y} 0)
+\t\t(unit 1)
+\t\t(exclude_from_sim no)
+\t\t(in_bom no)
+\t\t(on_board no)
+\t\t(dnp no)
+\t\t(uuid {uid()})
+\t\t(property "Reference" "#PWR02" (at {gnd1_x} {GND_SCH_Y + 5.08} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Value" "GND" (at {gnd1_x} {GND_SCH_Y + 3.81} 0) (effects (font (size 1.27 1.27))))
+\t\t(property "Footprint" "" (at {gnd1_x} {GND_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(pin "1" (uuid {uid()}))
+\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#PWR02") (unit 1))))
 \t)"""
     )
     lines.append(
@@ -1233,7 +1262,7 @@ def write_schematic(schematic_uuid: str) -> None:
             '\t(paper "A4")',
             "\t(title_block",
             '\t\t(title "NFC Business Card")',
-            '\t\t(date "2026-07-14")',
+            f'\t\t(date "{date.today().isoformat()}")',
             '\t\t(rev "B")',
             '\t\t(company "")',
             '\t\t(comment 1 "89x51mm passive NFC URL tag")',
