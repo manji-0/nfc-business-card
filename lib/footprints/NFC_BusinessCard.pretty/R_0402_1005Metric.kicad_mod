@@ -14,6 +14,6 @@
 	(fp_line (start -0.1 -0.35) (end 0.1 -0.35) (layer "B.Fab") (stroke (width 0.1) (type solid)))
 	(fp_line (start -0.1 0.35) (end 0.1 0.35) (layer "B.Fab") (stroke (width 0.1) (type solid)))
 	(fp_rect (start -1.0 -0.6) (end 1.0 0.6) (layer "B.CrtYd") (stroke (width 0.05) (type solid)) (fill none))
-	(pad "1" smd roundrect (at -0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid 7a740884-f426-4d1d-95e2-e8f9207d8c7b))
-	(pad "2" smd roundrect (at 0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid 5c362207-b2d1-4d45-b4f0-976fcb7787c2))
+	(pad "1" smd roundrect (at -0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid e155b13a-fdfc-44c7-afc9-be671b745837))
+	(pad "2" smd roundrect (at 0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid 5a2c3b9a-2375-4ca3-994b-71005f9a663c))
 )

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from kamae.result import Err, Ok, Result
 from kamae.types import HJustify, Layer, Mm, VJustify
+from fonts import kicad_face_name
 from kicad_paths import find_kicad_python, kicad_python_env
 from name_render_cache import (
     align_gr_text_block_left,
@@ -131,7 +132,7 @@ def bake_specs_raw(specs: list[TextSpec]) -> Result[list[str], BakeError]:
             f"txt{idx}.SetLayer({layer})",
             f"txt{idx}.SetTextSize(pcbnew.VECTOR2I(int(mm({float(spec.size_mm)})), int(mm({float(spec.size_mm)}))))",
             f"txt{idx}.SetTextThickness(int(mm({float(spec.thickness_mm)})))",
-            f"txt{idx}.SetFontProp({spec.face!r})",
+            f"txt{idx}.SetFontProp({kicad_face_name(spec.face)!r})",
             f"txt{idx}.SetHorizJustify({h})",
             f"txt{idx}.SetVertJustify({v})",
             f"board.Add(txt{idx})",

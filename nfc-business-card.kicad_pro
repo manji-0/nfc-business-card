@@ -3,7 +3,7 @@
     "design_settings": {
       "defaults": {
         "board_outline_line_width": 0.1,
-        "copper_line_width": 0.18,
+        "copper_line_width": 0.25,
         "copper_text_size_h": 1.0,
         "copper_text_size_v": 1.0,
         "copper_text_thickness": 0.15,
@@ -15,7 +15,7 @@
       },
       "rules": {
         "min_clearance": 0.2,
-        "min_track_width": 0.18,
+        "min_track_width": 0.25,
         "min_via_diameter": 0.4,
         "min_through_hole_diameter": 0.2,
         "solder_mask_clearance": 0.0,

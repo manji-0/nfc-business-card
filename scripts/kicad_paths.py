@@ -88,9 +88,23 @@ def kicad_site_packages() -> Path:
     )
 
 
+def kicad_fontconfig_env() -> dict[str, str]:
+    """Env with FONTCONFIG_FILE pointed at the repo fontconfig config.
+
+    KiCad ships its own fontconfig but no default config on macOS, so system
+    fonts (incl. the split Baskerville-SemiBold.ttf in ~/Library/Fonts) are
+    otherwise unresolvable and text falls back to the built-in stroke font.
+    """
+    env = os.environ.copy()
+    fc = Path(__file__).resolve().parents[1] / "scripts" / "fc" / "fonts.conf"
+    if fc.is_file():
+        env["FONTCONFIG_FILE"] = str(fc)
+    return env
+
+
 def kicad_python_env() -> dict[str, str]:
     """Environment for subprocess calls into KiCad's Python."""
-    env = os.environ.copy()
+    env = kicad_fontconfig_env()
     site = str(kicad_site_packages())
     prev = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = f"{site}{os.pathsep}{prev}" if prev else site

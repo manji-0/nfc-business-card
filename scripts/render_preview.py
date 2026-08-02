@@ -24,10 +24,22 @@ from generate_kicad_project import (  # noqa: E402
     TRACE_W,
     TURNS,
     feed_routes,
+    feed_vias,
+    gnd_island_route,
+    nc_terminator_routes,
     nfc_layout,
     rectangular_spiral,
 )
-from jlcpcb_limits import XQFN_PAD_EDGE_MM, XQFN_PAD_ROW_MM  # noqa: E402
+from jlcpcb_limits import (  # noqa: E402
+    ANT_TIE_TAKEOFF_DX_MM,
+    ANT_TIE_VIA_DY_MM,
+    ANTENNA_FEED_PAD_D_MM,
+    GND_ISLAND_DX_MM,
+    GND_ISLAND_H_MM,
+    GND_ISLAND_W_MM,
+    XQFN_PAD_EDGE_MM,
+    XQFN_PAD_ROW_MM,
+)
 from card_copy import CONTACTS, NAME, QR_URL, ROLES  # noqa: E402
 from fonts import FontFile, font_file  # noqa: E402
 from silk_layout import (  # noqa: E402
@@ -159,19 +171,68 @@ def stroke_poly(draw: ImageDraw.ImageDraw, pts: list[tuple[float, float]], width
 
 def draw_antenna_under_mask(card: Image.Image, segs, ox=0, oy=0) -> None:
     """Subtle coil visible through soldermask + ENIG feed traces."""
+    draw_copper_under_mask(card, segs, TRACE_W * 1.15, ox=ox, oy=oy)
+
+
+def draw_copper_under_mask(
+    card: Image.Image,
+    segs,
+    width_mm: float,
+    ox=0,
+    oy=0,
+    *,
+    alpha: int = 255,
+    blur: float = 0.35,
+) -> None:
+    """Copper under the black mask: faint warm hint, like the real board."""
     layer = Image.new("RGBA", card.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     for a, b in segs:
-        stroke_poly(d, [a, b], TRACE_W * 1.15, (*COPPER_UNDER, 255), ox, oy)
-    # slight blur so it reads as under-mask copper
+        stroke_poly(d, [a, b], width_mm, (*COPPER_UNDER, alpha), ox, oy)
+    layer = layer.filter(ImageFilter.GaussianBlur(radius=blur))
+    card.alpha_composite(layer)
+
+
+def draw_roundrect_under_mask(
+    card: Image.Image,
+    cx_mm: float,
+    cy_mm: float,
+    w_mm: float,
+    h_mm: float,
+    ox=0,
+    oy=0,
+    *,
+    alpha: int = 255,
+) -> None:
+    """Filled net-tie / pad copper under the mask (no mask opening)."""
+    layer = Image.new("RGBA", card.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    x0, y0 = mm(cx_mm - w_mm / 2, cy_mm - h_mm / 2, ox, oy)
+    x1, y1 = mm(cx_mm + w_mm / 2, cy_mm + h_mm / 2, ox, oy)
+    r = max(2, int(0.2 * min(w_mm, h_mm) / 2 * PPM))
+    d.rounded_rectangle((x0, y0, x1, y1), radius=r, fill=(*COPPER_UNDER, alpha))
     layer = layer.filter(ImageFilter.GaussianBlur(radius=0.35))
     card.alpha_composite(layer)
 
 
-def draw_exposed_feeds(card: Image.Image, segs_feed, ox=0, oy=0) -> None:
+def draw_vias(card: Image.Image, vias, ox=0, oy=0) -> None:
+    """Tented through-vias (front view: covered, subtle dark ring)."""
     d = ImageDraw.Draw(card)
-    for a, b in segs_feed:
-        stroke_poly(d, [a, b], FEED_TRACE_W, (*COPPER_ENIG, 255), ox, oy)
+    for x, y, _net in vias:
+        cx, cy = mm(x, y, ox, oy)
+        r = max(2, int(0.3 * PPM))  # via pad Ø0.6 mm
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(46, 46, 52, 140), width=1)
+        d.ellipse((cx - 1, cy - 1, cx + 1, cy + 1), fill=(200, 165, 50, 90))
+
+
+def draw_gnd_island(card: Image.Image, gnd, ox=0, oy=0) -> None:
+    """Local VSS island: F.Cu + F.Mask => ENIG gold opening."""
+    cx, cy, w, h = gnd
+    d = ImageDraw.Draw(card)
+    x0, y0 = mm(cx - w / 2, cy - h / 2, ox, oy)
+    x1, y1 = mm(cx + w / 2, cy + h / 2, ox, oy)
+    r = max(2, int(0.2 * min(w, h) / 2 * PPM))
+    d.rounded_rectangle((x0, y0, x1, y1), radius=r, fill=COPPER_ENIG + (235,))
 
 
 def draw_xqfn(card: Image.Image, u1, ox=0, oy=0) -> None:
@@ -263,18 +324,24 @@ def draw_silk_at_tl(card: Image.Image, silk: Image.Image, x_mm: float, y_mm: flo
     card.alpha_composite(silk, (x0, y0))
 
 
-def draw_front(card: Image.Image, lay, ant_segs, feed_segs) -> None:
+def draw_front(card: Image.Image, lay, ant_segs, feed_segs, vias, tie_pads, gnd_island) -> None:
     name_f, _tiny_f = fonts()
     d = ImageDraw.Draw(card)
     draw_board_base(card)
 
-    # Antenna under mask (right zone)
+    # Copper under mask (right zone): coil + LA/LB feeds + net-tie bridge
     draw_antenna_under_mask(card, ant_segs)
-    draw_exposed_feeds(card, feed_segs)
+    draw_copper_under_mask(card, feed_segs, FEED_TRACE_W)
+    for (cx, cy, w, h) in tie_pads:
+        draw_roundrect_under_mask(card, cx, cy, w, h)
 
     # Components
     draw_xqfn(card, lay["u1"])
     draw_c0402(card, lay["c1"], dnp=True)
+
+    # ENIG mask openings (gold surfaces)
+    draw_gnd_island(card, gnd_island)
+    draw_vias(card, vias)
 
     # --- Silkscreen / ENIG text (left zone) ---
     draw_name_enig(card, name_f)
@@ -310,8 +377,21 @@ def draw_logo_at(card: Image.Image, silk: Image.Image, cx_mm: float, cy_mm: floa
 
 
 def draw_back(card: Image.Image) -> None:
-    """Black back: OpenStack / Kubernetes / Prometheus / OIDC in a 2x2 grid."""
+    """Black back: B.Cu copper hints + OpenStack / K8s / Prometheus / OIDC grid."""
     draw_board_base(card)
+
+    # Faint B.Cu under-mask copper: LB underpass + NC pull-down routes
+    lay = nfc_layout()
+    ant_abs = [(lay["ant_cx"] + x, lay["ant_cy"] + y) for x, y in lay["ant_pts"]]
+    ant1, ant2 = ant_abs[0], ant_abs[-1]
+    routes = feed_routes(ant1, ant2, lay["u1"], lay["c1"])
+    underpass = [(x0, y0, x1, y1) for x0, y0, x1, y1, _n, _w, l in routes if l == "B.Cu"]
+    nc_segs, nc_vias = nc_terminator_routes(lay["u1"])
+    nc_segs_pts = [(x0, y0, x1, y1) for x0, y0, x1, y1, _n, _w, l in nc_segs]
+    bcu = [((x0, y0), (x1, y1)) for x0, y0, x1, y1 in underpass + nc_segs_pts]
+    if bcu:
+        draw_copper_under_mask(card, bcu, FEED_TRACE_W, alpha=120, blur=0.6)
+    draw_vias(card, feed_vias(ant2, lay["u1"]) + list(nc_vias))
 
     logos_dir = ASSETS / "logos"
     logo_mm, back_items = back_logo_grid()
@@ -323,17 +403,37 @@ def draw_back(card: Image.Image) -> None:
         draw_logo_at(card, Image.open(path).convert("RGBA"), cx, cy, logo_mm)
 
 
+def net_tie_pads(ant2: tuple[float, float]) -> list[tuple[float, float, float, float]]:
+    """ANT1 net-tie pads (build_ant_footprint): (cx, cy, w, h) in mm."""
+    ex, ey = ant2
+    pad_d = ANTENNA_FEED_PAD_D_MM
+    # pad 1 (LA): coil inner end -> take-off (roundrect 1.3 x 0.45)
+    p1 = (ex + ANT_TIE_TAKEOFF_DX_MM / 2, ey, ANT_TIE_TAKEOFF_DX_MM, pad_d)
+    # pad 2 (LB): take-off -> via_in (roundrect 0.45 x 0.75)
+    p2 = (ex + ANT_TIE_TAKEOFF_DX_MM, ey + ANT_TIE_VIA_DY_MM / 2, pad_d, ANT_TIE_VIA_DY_MM)
+    return [p1, p2]
+
+
+def gnd_island_rect(u1: tuple[float, float]) -> tuple[float, float, float, float]:
+    u1_x, u1_y = u1
+    return (u1_x - GND_ISLAND_DX_MM, u1_y + 0.20, GND_ISLAND_W_MM, GND_ISLAND_H_MM)
+
+
 def build_geometry():
     lay = nfc_layout()
     ant_abs = [(lay["ant_cx"] + x, lay["ant_cy"] + y) for x, y in lay["ant_pts"]]
     ant_segs = list(zip(ant_abs, ant_abs[1:]))
     ant1, ant2 = ant_abs[0], ant_abs[-1]
+    routes = feed_routes(ant1, ant2, lay["u1"], lay["c1"]) + gnd_island_route(lay["u1"])
     feed_segs = [
         ((x0, y0), (x1, y1))
-        for x0, y0, x1, y1, _net, _w, layer in feed_routes(ant1, ant2, lay["u1"], lay["c1"])
+        for x0, y0, x1, y1, _net, _w, layer in routes
         if layer == "F.Cu"
     ]
-    return lay, ant_segs, feed_segs
+    vias = feed_vias(ant2, lay["u1"])
+    tie_pads = net_tie_pads(ant2)
+    gnd_island = gnd_island_rect(lay["u1"])
+    return lay, ant_segs, feed_segs, vias, tie_pads, gnd_island
 
 
 def render_card_face(drawer, *args) -> Image.Image:
@@ -352,9 +452,9 @@ def render_card_face(drawer, *args) -> Image.Image:
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     ASSETS.mkdir(parents=True, exist_ok=True)
-    lay, ant_segs, feed_segs = build_geometry()
+    lay, ant_segs, feed_segs, vias, tie_pads, gnd_island = build_geometry()
 
-    front = render_card_face(draw_front, lay, ant_segs, feed_segs)
+    front = render_card_face(draw_front, lay, ant_segs, feed_segs, vias, tie_pads, gnd_island)
     back = render_card_face(draw_back)
 
     gap = int(8 * PPM)

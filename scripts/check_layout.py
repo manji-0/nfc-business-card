@@ -26,6 +26,8 @@ from generate_kicad_project import (  # noqa: E402
     xqfn_pad_wh,
 )
 from jlcpcb_limits import (  # noqa: E402
+    ANT_TIE_TAKEOFF_DX_MM,
+    ANT_TIE_VIA_DY_MM,
     ANTENNA_FEED_PAD_D_MM,
     ANTENNA_GAP_MM,
     ANTENNA_TRACE_W_MM,
@@ -232,6 +234,20 @@ if leadout_clr < DESIGN_TRACE_CLEARANCE_MM:
     errors.append(f"LB net-tie pad vs coil lead-out clearance {leadout_clr:.3f} mm too tight")
 else:
     print(f"OK: LB net-tie pad vs coil lead-out {leadout_clr:.2f} mm")
+
+# Net-tie bridge: pad1 (LA roundrect, coil end→take-off) must overlap pad2
+# (LB roundrect, take-off→via_in) — that physical overlap is what closes the
+# coil to the LB feed without a cross-net track touch.
+tie_x0, tie_y0 = ant2
+tie_x1 = tie_x0 + ANT_TIE_TAKEOFF_DX_MM
+p1 = (tie_x0, tie_y0 - ANTENNA_FEED_PAD_D_MM / 2, tie_x1, tie_y0 + ANTENNA_FEED_PAD_D_MM / 2)
+p2 = (tie_x1 - ANTENNA_FEED_PAD_D_MM / 2, tie_y0, tie_x1 + ANTENNA_FEED_PAD_D_MM / 2, tie_y0 + ANT_TIE_VIA_DY_MM)
+ov_x = min(p1[2], p2[2]) - max(p1[0], p2[0])
+ov_y = min(p1[3], p2[3]) - max(p1[1], p2[1])
+if min(ov_x, ov_y) < 0.1:
+    errors.append(f"ANT1 net-tie pads overlap only {min(ov_x, ov_y):.3f} mm (need ≥0.1 mm)")
+else:
+    print(f"OK: ANT1 net-tie pads overlap {ov_x:.2f}×{ov_y:.2f} mm (LA coil end → LB take-off)")
 
 print(f"OK: text zone width {TEXT_ZONE_W:.0f} mm (copper-free)")
 print(f"OK: antenna {lay['ant_w']:.1f}×{lay['ant_h']:.1f} mm, {TURNS} turns")

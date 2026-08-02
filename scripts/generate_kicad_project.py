@@ -10,6 +10,8 @@ from pathlib import Path
 from card_copy import NAME
 from jlcpcb_limits import (
     ANT_INSET_MM,
+    ANT_TIE_TAKEOFF_DX_MM,
+    ANT_TIE_VIA_DY_MM,
     ANTENNA_FEED_PAD_D_MM,
     ANTENNA_GAP_MM,
     ANTENNA_TRACE_W_MM,
@@ -131,7 +133,10 @@ def feed_routes(
 
     LA skirts left of U1 (bypass) so the vertical bus never crosses FD (pad 4).
     LB uses a thin B.Cu underpass from the inner spiral end into the component strip —
-    an F.Cu path at ant2_y would cross the outer left turn (x≈ant_x0).
+    an F.Cu path at ant2_y would cross the outer left turn (x≈ant_x0). The copper
+    bridge from the coil inner end to the take-off is the ANT1 net-tie pad 1 (LA),
+    which overlaps pad 2 (LB) at the take-off; the B.Cu underpass starts at via_in
+    (under pad 2), so no cross-net track is needed in the hollow.
     """
     u1_x, u1_y = u1
     c1_x, c1_y = c1
@@ -143,7 +148,7 @@ def feed_routes(
     c1_lb = (c1_x + 0.48, c1_y)
     w = FEED_TRACE_W
     # Inner via: step into spiral hollow; outer via: component strip east of U1
-    via_in = (ant2_abs[0] + 1.3, ant2_abs[1] + 0.75)
+    via_in = (ant2_abs[0] + ANT_TIE_TAKEOFF_DX_MM, ant2_abs[1] + ANT_TIE_VIA_DY_MM)
     via_out = (u1_x + 2.0, pad_y)
     return [
         # LA antenna → skirt left of chip → enter pad 1 from the left
@@ -153,9 +158,7 @@ def feed_routes(
         # LA from C1 (above chip — la_x vertical is clear of FD)
         (c1_la[0], c1_la[1], la_x, c1_la[1], "LA", w, "F.Cu"),
         (la_x, c1_la[1], la_x, pad_y, "LA", w, "F.Cu"),
-        # LB: F.Cu stub into hollow → B.Cu underpass → F.Cu to pad 8
-        # (antenna net-tie pad 2 sits at via_in_x, ant2_y — route starts there)
-        (via_in[0], ant2_abs[1], via_in[0], via_in[1], "LB", w, "F.Cu"),
+        # LB: B.Cu underpass from via_in (net-tie pad 2 covers take-off→via) → pad 8
         (via_in[0], via_in[1], via_out[0], via_in[1], "LB", w, "B.Cu"),
         (via_out[0], via_in[1], via_out[0], via_out[1], "LB", w, "B.Cu"),
         (via_out[0], via_out[1], lb_x, pad_y, "LB", w, "F.Cu"),
@@ -172,7 +175,7 @@ def feed_vias(
     """Vias for the LB underpass (inner hollow + component strip)."""
     u1_x, u1_y = u1
     pad_y = u1_y + 0.75
-    via_in = (ant2_abs[0] + 1.3, ant2_abs[1] + 0.75)
+    via_in = (ant2_abs[0] + ANT_TIE_TAKEOFF_DX_MM, ant2_abs[1] + ANT_TIE_VIA_DY_MM)
     via_out = (u1_x + 2.0, pad_y)
     return [(via_in[0], via_in[1], "LB"), (via_out[0], via_out[1], "LB")]
 
@@ -1040,12 +1043,18 @@ def build_ant_footprint(x: float, y: float, ant_pts: list[tuple[float, float]]) 
     """Net-tie junction at the coil inner end.
 
     The spiral itself is drawn as netted F.Cu tracks (net LA) in write_pcb, so no
-    un-netted footprint copper exists and DRC is deterministic. This footprint only
-    bridges the coil end (pad 1, LA) to the LB feed take-off (pad 2, LB) via a
-    KiCad net-tie — pads need not touch, tied pads form one node.
+    un-netted footprint copper exists and DRC is deterministic. The physical bridge
+    that closes the coil to the LB feed lives in this footprint as two overlapping
+    connect pads (net_tie_pad_groups "1,2"):
+
+      pad 1 (LA): roundrect spanning from the coil inner end to the take-off
+      pad 2 (LB): roundrect from the take-off down to via_in
+
+    Overlapping pads in the same tie group are exempt from the DRC short test, so
+    net LA meets net LB here without a track↔pad short.
     """
     end = ant_pts[-1]
-    take_off = (end[0] + 1.3, end[1])  # aligns with via_in / B.Cu underpass take-off
+    end_x, end_y = end
     pad_d = ANTENNA_FEED_PAD_D_MM
     parts = [
         '\t(footprint "NFC_BusinessCard:Antenna_Spiral_29x45_5T"',
@@ -1055,12 +1064,28 @@ def build_ant_footprint(x: float, y: float, ant_pts: list[tuple[float, float]]) 
         footprint_property("Reference", "ANT1", 0, 0, 0, "F.SilkS", hide=True, font_size=(0.8, 0.8), thickness=0.12),
         footprint_property("Value", "Antenna_NFC", 0, 0, 0, "F.Fab", hide=True, font_size=(0.8, 0.8), thickness=0.12),
         _fp_hidden_fields(),
-        # net-tie: coil end (LA, pad 1) intentionally bridges to the LB feed (pad 2)
+        # net-tie: coil end (LA, pad 1) bridges to the LB feed take-off (pad 2)
         '\t\t(attr board_only exclude_from_pos_files exclude_from_bom allow_missing_courtyard)',
         '\t\t(net_tie_pad_groups "1,2")',
         "\t\t(duplicate_pad_numbers_are_jumpers no)",
-        fp_pad_circle("1", end[0], end[1], net="LA", size=pad_d, pad_type="connect", layers='"F.Cu"'),
-        fp_pad_circle("2", take_off[0], take_off[1], net="LB", size=pad_d, pad_type="connect", layers='"F.Cu"'),
+        # pad 1 (LA): copper from coil inner end to the LB take-off
+        f'\t\t(pad "1" connect roundrect\n'
+        f'\t\t\t(at {end_x + ANT_TIE_TAKEOFF_DX_MM / 2:.4f} {end_y:.4f})\n'
+        f'\t\t\t(size {ANT_TIE_TAKEOFF_DX_MM} {pad_d})\n'
+        f'\t\t\t(layers "F.Cu")\n'
+        f'\t\t\t(roundrect_rratio 0.2)\n'
+        f'\t\t\t(net "LA")\n'
+        f'\t\t\t(uuid {quuid()})\n'
+        f'\t\t)',
+        # pad 2 (LB): take-off down to via_in (overlaps pad 1 by design)
+        f'\t\t(pad "2" connect roundrect\n'
+        f'\t\t\t(at {end_x + ANT_TIE_TAKEOFF_DX_MM:.4f} {end_y + ANT_TIE_VIA_DY_MM / 2:.4f})\n'
+        f'\t\t\t(size {pad_d} {ANT_TIE_VIA_DY_MM})\n'
+        f'\t\t\t(layers "F.Cu")\n'
+        f'\t\t\t(roundrect_rratio 0.2)\n'
+        f'\t\t\t(net "LB")\n'
+        f'\t\t\t(uuid {quuid()})\n'
+        f'\t\t)',
         "\t\t(embedded_fonts no)",
         "\t)",
     ]
@@ -1259,7 +1284,7 @@ def write_pcb() -> None:
 def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
     pts = rectangular_spiral(0, 0, outer_w, outer_h, TURNS, TRACE_W, GAP)
     end = pts[-1]
-    take_off = (end[0] + 1.3, end[1])  # matches the board's B.Cu underpass take-off
+    end_x, end_y = end
     pad_d = ANTENNA_FEED_PAD_D_MM
     fp_name = f"Antenna_Spiral_{outer_w:.0f}x{outer_h:.0f}_{TURNS}T"
     lines = [
@@ -1267,7 +1292,7 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
         f'\t(version {PCB_FORMAT_VERSION})',
         '\t(generator "nfc_business_card")',
         '\t(layer "F.Cu")',
-        f'\t(descr "Rect spiral NFC antenna ~{outer_w:.0f}x{outer_h:.0f}mm {TURNS} turns {TRACE_W}/{GAP}; net-tie pads 1-2 (spiral = board tracks net LA)")',
+        f'\t(descr "Rect spiral NFC antenna ~{outer_w:.0f}x{outer_h:.0f}mm {TURNS} turns {TRACE_W}/{GAP}; overlapping net-tie pads 1-2 (spiral = board tracks net LA)")',
         '\t(tags "net tie nfc antenna spiral")',
         '\t(attr exclude_from_pos_files exclude_from_bom allow_missing_courtyard)',
         '\t(net_tie_pad_groups "1,2")',
@@ -1277,10 +1302,10 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
         '\t(fp_text value "Antenna" (at 0 0) (layer "F.Fab") (hide yes)',
         '\t\t(effects (font (size 1 1) (thickness 0.15)))',
         "\t)",
-        f'\t(pad "1" connect circle (at {end[0]:.4f} {end[1]:.4f}) (size {pad_d} {pad_d}) '
-        f'(layers "F.Cu") (uuid {uid()}))',
-        f'\t(pad "2" connect circle (at {take_off[0]:.4f} {take_off[1]:.4f}) (size {pad_d} {pad_d}) '
-        f'(layers "F.Cu") (uuid {uid()}))',
+        f'\t(pad "1" connect roundrect (at {end_x + ANT_TIE_TAKEOFF_DX_MM / 2:.4f} {end_y:.4f}) '
+        f'(size {ANT_TIE_TAKEOFF_DX_MM} {pad_d}) (layers "F.Cu") (roundrect_rratio 0.2) (uuid {uid()}))',
+        f'\t(pad "2" connect roundrect (at {end_x + ANT_TIE_TAKEOFF_DX_MM:.4f} {end_y + ANT_TIE_VIA_DY_MM / 2:.4f}) '
+        f'(size {pad_d} {ANT_TIE_VIA_DY_MM}) (layers "F.Cu") (roundrect_rratio 0.2) (uuid {uid()}))',
         ")",
     ]
     pretty = LIB / "footprints" / "NFC_BusinessCard.pretty"

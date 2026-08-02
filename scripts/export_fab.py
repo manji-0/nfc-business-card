@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from generate_kicad_project import ASSETS, C1_LCSC, LOGOS, nfc_layout  # noqa: E402
 from gerber_silk import SilkBitmap, append_bitmaps_to_gerber  # noqa: E402
-from kicad_paths import find_kicad_cli  # noqa: E402
+from kicad_paths import find_kicad_cli, kicad_fontconfig_env  # noqa: E402
 from silk_layout import (  # noqa: E402
     CONTACT_X_MM,
     NFC_LOGO_SIZE_MM,
@@ -98,10 +98,12 @@ def _run_kicad_export() -> None:
             str(PCB),
         ],
         check=True,
+        env=kicad_fontconfig_env(),
     )
     subprocess.run(
         [str(kicad_cli), "pcb", "export", "drill", "-o", str(GERBER_DIR), str(PCB)],
         check=True,
+        env=kicad_fontconfig_env(),
     )
 
 
@@ -180,7 +182,7 @@ def _export_kicad_positions(*, exclude_dnp: bool) -> list[tuple[str, float, floa
     ]
     if exclude_dnp:
         cmd.insert(-1, "--exclude-dnp")
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, env=kicad_fontconfig_env())
 
     rows: list[tuple[str, float, float, float, str]] = []
     with tmp.open(encoding="utf-8", newline="") as handle:

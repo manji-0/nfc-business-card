@@ -34,7 +34,7 @@ JLCPCB 下限は `scripts/jlcpcb_limits.py` を参照。設計値は JLC 最小�
 
 | 要素 | レイヤ | フォント / 素材 | 配置 |
 |------|--------|-----------------|------|
-| 氏名 | **F.Cu + F.Mask**（ENIG） | Baskerville SemiBold、cap 高さ 5.5 mm | 左上、`TEXT_LEFT_MM=5` |
+| 氏名 | **F.Cu + F.Mask**（ENIG） | Georgia Bold、em 5.1 mm | 左上、`TEXT_LEFT_MM=5` |
 | 肩書き 2 行 | F.SilkS（PNG） | Helvetica Neue 1.8 mm | 氏名の下、`ROLES_Y0_MM=18.5` |
 | QR | F.SilkS（PNG） | 白モジュール | 左列、連絡先ブロックと縦中央揃え |
 | 連絡先 4 行 | F.SilkS（PNG） | Helvetica Neue 1.7 mm | `CONTACT_X_MM=16.5` |
@@ -98,7 +98,7 @@ devbox shell          # 初回セットアップ — 詳細は SETUP.md
 ./task list
 ```
 
-KiCad 10 が `/Applications/KiCad/` に必要（氏名の TTF ベイク）。無い場合は stroke フォントにフォールバックする。
+KiCad 10 が `/Applications/KiCad/` に必要（氏名の TTF ベイク）。無い場合は stroke フォントにフォールバックする。**名前フォント（Georgia Bold）は KiCad が「Georgia Bold」という名前で解決できないため（wx はファミリ名 'Georgia' しか見ない）、一度 `scripts/split_font.py --install` で一意ファミリ名 `GeorgiaBold` の分割 TTF を `~/Library/Fonts` に登録しておくこと**（プリビューと KiCad は同一の `assets/fonts/Georgia-Bold.ttf` を使う）。fonts.conf は `scripts/fc/fonts.conf` を `FONTCONFIG_FILE` で注入する。
 
 ### アセット解像度
 
@@ -134,7 +134,7 @@ KiCad 10 が `/Applications/KiCad/` に必要（氏名の TTF ベイク）。無
 - 螺旋がテキストゾーンに入らない
 - LA/LB フィードが短絡しない（FD 等 NC パッドへの貫通含む）
 - LB の F.Cu がアンテナ左辺を横切らない（内側終端は B.Cu アンダーパス）
-- アンテナ螺旋は **net 付き F.Cu トラック（net LA）**、FP はコイル内側終端の **net-tie ジャンクション**（`net_tie_pad_groups "1,2"`、pad1=LA/pad2=LB）
+- アンテナ螺旋は **net 付き F.Cu トラック（net LA）**、FP はコイル内側終端の **net-tie ジャンクション**（`net_tie_pad_groups "1,2"`）。物理ブリッジは **重なり合う connect パッド**（pad1=LA がコイル内端→テイクオフ、pad2=LB がテイクオフ→via_in）。tie 内パッド同士の重なりは DRC 短絡免除、**トラックでの橋渡しは KiCad 10 DRC が LA/LB 短絡を出すので禁止**
 - **no-net 銅を置かない**（no-net fp_line 螺旋は DRC 結果が UUID 依存になり再生成ごとに揺れる）
 - XQFN 同一辺パッドの向き・間隔（サイドパッド長軸 = パッケージ中心方向）
 - 局所 GND 島がコンポーネント帯内にあり SCL / LA バイパスとクリア

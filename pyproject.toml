@@ -5,6 +5,7 @@ description = "KiCad generator and fab pipeline for an NFC business card PCB"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "fonttools>=4.63.0",
     "pillow>=10.0",
     "qrcode>=7.4",
 ]
