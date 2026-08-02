@@ -427,15 +427,18 @@ def check_geometry(
     feed_half_w: float,
     allow_net_pairs: set[tuple[str, str]] | None = None,
 ) -> Result[None, list[CopperIssue]]:
-    allow = allow_net_pairs if allow_net_pairs is not None else {("LA", "LB")}
+    # LA/LB bus gap 0.15 mm is intentional (XQFN pitch); allow clearance only.
+    # Cross-net centerline crossings are never allowlisted — a same-layer LA/LB
+    # short outside the net-tie must fail.
+    clearance_allow = allow_net_pairs if allow_net_pairs is not None else {("LA", "LB")}
     issues: list[CopperIssue] = []
     issues.extend(find_no_net_copper(segs, vias))
-    issues.extend(find_crossings(segs, allow_net_pairs=allow))
+    issues.extend(find_crossings(segs, allow_net_pairs=set()))
     issues.extend(
         find_clearance_violations(
             segs,
             min_clearance=design_clearance,
-            allow_net_pairs=allow,
+            allow_net_pairs=clearance_allow,
             jlc_min=jlc_min,
         )
     )

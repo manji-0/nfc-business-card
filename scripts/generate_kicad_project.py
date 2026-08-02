@@ -352,17 +352,22 @@ def nc_terminator_routes(
         vias.append((vx, vy, net, NC_VIA_SIZE_MM, NC_VIA_DRILL_MM))
         stub = [(u1_x + x, u1_y + y) for x, y in f["stub"]]
         segs += [(*a, *b, net, stub_w, "F.Cu") for a, b in zip(stub, stub[1:])]
-        # B.Cu: optional north jog into a clear lane, then to column, south, to pad 1
+        # B.Cu: optional north jog into a clear lane, then to column, south, to pad 1.
+        # Skip duplicate points (e.g. VOUT via.x == col.x) to avoid zero-length tracks.
         bc_pts = [(vx, vy)]
         if "bc_via_y" in f:
             lane_y = u1_y + f["bc_via_y"]
             bc_pts.append((vx, lane_y))
-            bc_pts.append((col_x, lane_y))
+            if abs(col_x - vx) > 1e-9:
+                bc_pts.append((col_x, lane_y))
         elif abs(vx - col_x) > 1e-9:
             bc_pts.append((col_x, vy))
         bc_pts.append((col_x, rcy))
         bc_pts.append((pad1_x, rcy))
-        segs += [(*a, *b, net, w, "B.Cu") for a, b in zip(bc_pts, bc_pts[1:])]
+        for a, b in zip(bc_pts, bc_pts[1:]):
+            if abs(a[0] - b[0]) < 1e-9 and abs(a[1] - b[1]) < 1e-9:
+                continue
+            segs.append((*a, *b, net, w, "B.Cu"))
         rows.append(rcy)
 
     if rows:
@@ -579,6 +584,24 @@ def write_symbol_lib() -> None:
 \t\t\t(pin power_out line (at 0 0 0) (length 0) (name "pwr" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
 \t\t)
 \t)
+\t(symbol "R_0402"
+\t\t(pin_numbers (hide yes))
+\t\t(pin_names (offset 0.254))
+\t\t(exclude_from_sim no)
+\t\t(in_bom yes)
+\t\t(on_board yes)
+\t\t(property "Reference" "R" (at 0.635 2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
+\t\t(property "Value" "R_0402" (at 0.635 -2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
+\t\t(property "Footprint" "NFC_BusinessCard:R_0402_1005Metric" (at 0.9652 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Description" "{NC_TERM_R_KOHM}k NC pull-down" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(symbol "R_0402_0_1"
+\t\t\t(rectangle (start -1.016 -0.508) (end 1.016 0.508) (stroke (width 0.254) (type default)) (fill (type none)))
+\t\t)
+\t\t(symbol "R_0402_1_1"
+\t\t\t(pin passive line (at -{R_SCH_PIN_SPAN} 0 0) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+\t\t\t(pin passive line (at {R_SCH_PIN_SPAN} 0 180) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+\t\t)
+\t)
 )
 """,
         encoding="utf-8",
@@ -707,8 +730,8 @@ def write_r0402_footprint() -> None:
 \t(fp_line (start -0.1 -0.35) (end 0.1 -0.35) (layer "B.Fab") (stroke (width 0.1) (type solid)))
 \t(fp_line (start -0.1 0.35) (end 0.1 0.35) (layer "B.Fab") (stroke (width 0.1) (type solid)))
 \t(fp_rect (start -1.0 -0.6) (end 1.0 0.6) (layer "B.CrtYd") (stroke (width 0.05) (type solid)) (fill none))
-\t(pad "1" smd roundrect (at -0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid {uid()}))
-\t(pad "2" smd roundrect (at 0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid {uid()}))
+\t(pad "1" smd roundrect (at 0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid {uid()}))
+\t(pad "2" smd roundrect (at -0.48 0) (size 0.52 0.62) (layers "B.Cu" "B.Paste" "B.Mask") (roundrect_rratio 0.15) (uuid {uid()}))
 )
 """,
         encoding="utf-8",
@@ -813,36 +836,55 @@ R_SCH_PIN_SPAN = 3.81
 
 
 def _u1_sch_pin_xy(net: str) -> tuple[float, float]:
-    """Electrical connection point on the U1 schematic symbol (body edge)."""
-    pins = {
-        "SCL": (U1_SCH_X - 10.16, U1_SCH_Y),
-        "FD": (U1_SCH_X - 10.16, U1_SCH_Y - 2.54),
-        "SDA": (U1_SCH_X + 10.16, U1_SCH_Y - 2.54),
-        "VCC": (U1_SCH_X + 10.16, U1_SCH_Y),
-        "VOUT": (U1_SCH_X + 10.16, U1_SCH_Y + 2.54),
+    """Electrical connection point on the U1 schematic symbol (body edge).
+
+    Eeschema sheet Y increases downward, while symbol-local +Y is drawn upward,
+    so sheet_y = U1_SCH_Y - local_y.
+    """
+    # local (dx, dy) in symbol space (+dy = up on the symbol drawing)
+    local = {
+        "SCL": (-10.16, 0.0),
+        "FD": (-10.16, -2.54),
+        "SDA": (10.16, -2.54),
+        "VCC": (10.16, 0.0),
+        "VOUT": (10.16, 2.54),
+        "VSS": (-10.16, 2.54),
+        "LA": (-10.16, 5.08),
+        "LB": (10.16, 5.08),
     }
-    return pins[net]
+    dx, dy = local[net]
+    return (U1_SCH_X + dx, U1_SCH_Y - dy)
 
 
 def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
-    """R2–R6: 100 kΩ DNP pull-downs from NC pins to GND."""
+    """R2–R6: 100 kΩ DNP pull-downs from NC pins to GND.
+
+    R_0402 is horizontal: pin1 west, pin2 east at rot=0. Orient pin1 toward U1
+    (matches PCB pad1 = NC east of pad2 = GND): left-of-U1 → rot 180, right → rot 0.
+    """
     pins = [
-        ("R2", "SCL", 114.3, U1_SCH_Y),
-        ("R4", "FD", 114.3, U1_SCH_Y - 2.54),
-        ("R3", "SDA", 139.7, U1_SCH_Y - 2.54),
-        ("R5", "VCC", 139.7, U1_SCH_Y),
-        ("R6", "VOUT", 139.7, U1_SCH_Y + 2.54),
+        ("R2", "SCL", 114.3, _u1_sch_pin_xy("SCL")[1]),
+        ("R4", "FD", 114.3, _u1_sch_pin_xy("FD")[1]),
+        ("R3", "SDA", 139.7, _u1_sch_pin_xy("SDA")[1]),
+        ("R5", "VCC", 139.7, _u1_sch_pin_xy("VCC")[1]),
+        ("R6", "VOUT", 139.7, _u1_sch_pin_xy("VOUT")[1]),
     ]
     gnd_y = 93.98
+    desc = f"{NC_TERM_R_KOHM}k NC pull-down"
     lines: list[str] = []
     for ref, net, rx, ry in pins:
         u1x, u1y = _u1_sch_pin_xy(net)
-        rot = 90 if rx < u1x else 270
-        if rot == 90:
-            r_pin_x = rx + R_SCH_PIN_SPAN
+        left_of_u1 = rx < u1x
+        # pin1 toward U1
+        rot = 180 if left_of_u1 else 0
+        if left_of_u1:
+            r_pin_x = rx + R_SCH_PIN_SPAN  # pin1 (east when rot=180)
+            pin_gnd_x = rx - R_SCH_PIN_SPAN  # pin2
+            label_dx = 2.54
         else:
-            r_pin_x = rx - R_SCH_PIN_SPAN
-        label_dx = 2.54 if rot == 90 else -2.54
+            r_pin_x = rx - R_SCH_PIN_SPAN  # pin1 (west when rot=0)
+            pin_gnd_x = rx + R_SCH_PIN_SPAN  # pin2
+            label_dx = -2.54
         lines.append(
             f"""\t(symbol
 \t\t(lib_id "NFC_BusinessCard:R_0402")
@@ -853,9 +895,10 @@ def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
 \t\t(on_board yes)
 \t\t(dnp yes)
 \t\t(uuid {uid()})
-\t\t(property "Reference" "{ref}" (at {rx + label_dx} {ry - 1.27} {rot}) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Value" "DNP" (at {rx + label_dx} {ry + 1.27} {rot}) (effects (font (size 1.27 1.27)) (justify left)))
+\t\t(property "Reference" "{ref}" (at {rx + label_dx} {ry - 1.27} 0) (effects (font (size 1.27 1.27)) (justify left)))
+\t\t(property "Value" "DNP" (at {rx + label_dx} {ry + 1.27} 0) (effects (font (size 1.27 1.27)) (justify left)))
 \t\t(property "Footprint" "NFC_BusinessCard:R_0402_1005Metric" (at {rx} {ry} {rot}) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Description" "{desc}" (at {rx} {ry} {rot}) (effects (font (size 1.27 1.27)) (hide yes)))
 \t\t(property "LCSC Part #" "{NC_TERM_R_LCSC}" (at {rx} {ry} {rot}) (effects (font (size 1.27 1.27)) (hide yes)))
 \t\t(pin "1" (uuid {uid()}))
 \t\t(pin "2" (uuid {uid()}))
@@ -866,8 +909,15 @@ def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
             f'\t(wire (pts (xy {u1x} {u1y}) (xy {r_pin_x} {u1y})) '
             f'(stroke (width 0) (type default)) (uuid {uid()}))'
         )
-        pin_gnd_x = rx - R_SCH_PIN_SPAN if rot == 90 else rx + R_SCH_PIN_SPAN
-        gnd_x = 116.84 if rx < U1_SCH_X else 137.16
+        # Name the NC net to match PCB (SCL/SDA/…); otherwise parity sees Net-(U1-*).
+        label_x = (u1x + r_pin_x) / 2
+        lines.append(
+            f'\t(global_label "{net}" (shape input) (at {label_x} {u1y} '
+            f'{"0" if left_of_u1 else "180"}) '
+            f'(effects (font (size 1.27 1.27)) '
+            f'(justify {"left" if left_of_u1 else "right"} bottom)) (uuid {uid()}))'
+        )
+        gnd_x = 116.84 if left_of_u1 else 137.16
         lines.append(
             f'\t(wire (pts (xy {pin_gnd_x} {ry}) (xy {pin_gnd_x} {gnd_y})) '
             f'(stroke (width 0) (type default)) (uuid {uid()}))'
@@ -972,12 +1022,13 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t\t(property "Reference" "R" (at 0.635 2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
 \t\t\t(property "Value" "R_0402" (at 0.635 -2.54 0) (effects (font (size 1.27 1.27)) (justify left)))
 \t\t\t(property "Footprint" "NFC_BusinessCard:R_0402_1005Metric" (at 0.9652 -3.81 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t\t(property "Description" "{NC_TERM_R_KOHM}k NC pull-down" (at 0 0 0) (effects (font (size 1.27 1.27)) (hide yes)))
 \t\t\t(symbol "R_0402_0_1"
 \t\t\t\t(rectangle (start -1.016 -0.508) (end 1.016 0.508) (stroke (width 0.254) (type default)) (fill (type none)))
 \t\t\t)
 \t\t\t(symbol "R_0402_1_1"
-\t\t\t\t(pin passive line (at 0 3.81 270) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at 0 -3.81 90) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+\t\t\t\t(pin passive line (at -3.81 0 0) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+\t\t\t\t(pin passive line (at 3.81 0 180) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
 \t\t\t)
 \t\t)
 \t\t(symbol "NFC_BusinessCard:GND"
@@ -1126,7 +1177,7 @@ def write_schematic(schematic_uuid: str) -> None:
 \t(global_label "LB" (shape input) (at 139.7 80.01 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
 \t(wire (pts (xy 106.68 64.77) (xy 106.68 62.23)) (stroke (width 0) (type default)) (uuid {uid()}))
 \t(global_label "LA" (shape input) (at 106.68 62.23 90) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
-\t(wire (pts (xy 116.84 87.63) (xy 116.84 93.98)) (stroke (width 0) (type default)) (uuid {uid()}))
+\t(wire (pts (xy 116.84 {_u1_sch_pin_xy("VSS")[1]}) (xy 116.84 93.98)) (stroke (width 0) (type default)) (uuid {uid()}))
 \t(wire (pts (xy 116.84 93.98) (xy 114.3 93.98)) (stroke (width 0) (type default)) (uuid {uid()}))
 {nc_terms}
 \t(text "Passive NFC business card\\nU1=NT3H2111 (C710403)\\nC1=DNP tuning LA-LB (10-22 pF NP0)\\nR2-R6=DNP 100k to GND (SCL/SDA/FD/VCC/VOUT)\\nVSS=local GND island"
@@ -1208,10 +1259,10 @@ def build_silk_bitmaps(ant_cx: float, ant_cy: float) -> str:
     return "\n".join(parts) + "\n"
 
 
-def _fp_hidden_fields() -> str:
+def _fp_hidden_fields(*, description: str = "") -> str:
     return (
         footprint_property("Datasheet", "", 0, 0, 0, "F.Fab", hide=True)
-        + footprint_property("Description", "", 0, 0, 0, "F.Fab", hide=True)
+        + footprint_property("Description", description, 0, 0, 0, "F.Fab", hide=True)
     )
 
 
@@ -1363,13 +1414,8 @@ def build_r_footprint(ref: str, x: float, y: float, net_sig: str) -> str:
         f"\t\t(at {x} {y})",
         footprint_property("Reference", ref, 0, -1.2, 0, "B.SilkS", hide=True, font_size=(0.6, 0.6), thickness=0.1),
         footprint_property("Value", "DNP", 0, 1.2, 0, "B.Fab", font_size=(0.5, 0.5), thickness=0.08),
-        _fp_hidden_fields(),
+        _fp_hidden_fields(description=f"{NC_TERM_R_KOHM}k NC pull-down"),
         footprint_property("LCSC Part #", NC_TERM_R_LCSC, 0, 0, 0, "B.Fab", hide=True, font_size=(1.27, 1.27), thickness=0),
-        f'\t\t(property "Description" "{NC_TERM_R_KOHM}k NC pull-down" (at 0 0 0)',
-        '\t\t\t(layer "B.Fab")',
-        "\t\t\t(hide yes)",
-        '\t\t\t(effects (font (size 1.27 1.27) (thickness 0.15)))',
-        "\t\t)",
         "\t\t(attr smd exclude_from_pos_files exclude_from_bom dnp)",
         "\t\t(duplicate_pad_numbers_are_jumpers no)",
         fp_rect(-1.0, -0.6, 1.0, 0.6, "B.CrtYd"),

@@ -420,7 +420,7 @@ for num, (px, py, rot, pad_net) in xqfn_pads.items():
     x0, y0, x1, y1 = pad_bbox(u1_x + px, u1_y + py, rot)
     xqfn_pad_rects.append((x0, y0, x1, y1, pad_net, "F.Cu"))
 
-# Net-tie LA/LB overlap is intentional; do not allow other cross-net pairs.
+# LA/LB clearance allowlist only (0.15 mm bus). Crossings are never allowed.
 allow_tie = {("LA", "LB")}
 gen_result = check_geometry(
     gen_segs,
