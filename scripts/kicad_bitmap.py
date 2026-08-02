@@ -10,6 +10,7 @@ from pathlib import Path
 from PIL import Image
 
 from kicad10 import fmt_mm, quuid
+from sexpr import SexprDoc
 from silk_layout import SILK_BITMAP_PX_PER_MM
 
 PPI = 300
@@ -77,13 +78,14 @@ def _image_center_mm(
     return at_x_mm + draw_w / 2, at_y_mm + draw_h / 2
 
 
-def format_image_data(png_bytes: bytes) -> str:
+def format_image_data(png_bytes: bytes) -> SexprDoc:
     encoded = base64.b64encode(png_bytes).decode("ascii")
     lines = [encoded[i : i + BASE64_LINE_WIDTH] for i in range(0, len(encoded), BASE64_LINE_WIDTH)]
-    body = "\n".join(f'\t\t\t"{line}"' for line in lines)
-    return f"""\t\t(data
-{body}
-\t\t)"""
+    doc = SexprDoc()
+    with doc.node("(data"):
+        for line in lines:
+            doc.line(f'"{line}"')
+    return doc
 
 
 def bitmap_sexpr_rgba(
@@ -95,7 +97,7 @@ def bitmap_sexpr_rgba(
     layer: str,
     center: bool = False,
     preview_coords: bool = False,
-) -> str:
+) -> SexprDoc:
     """Place a PNG at native px_per_mm resolution (no rescale)."""
     im = Image.open(png_path).convert("RGBA")
     w, h = im.size
@@ -112,14 +114,15 @@ def bitmap_sexpr_rgba(
     max_dim_mm = max(draw_w, draw_h)
     scale = image_scale_for_size(max(w, h), max_dim_mm)
     png_bytes = png_path.read_bytes()
-    data_block = format_image_data(png_bytes)
-    scale_line = f"\n\t\t(scale {scale:.6g})" if abs(scale - 1.0) > 1e-9 else ""
-    return f"""\t(image
-\t\t(at {fmt_mm(center_x)} {fmt_mm(center_y)})
-\t\t(layer "{layer}"){scale_line}
-{data_block}
-\t\t(uuid {quuid()})
-\t)"""
+    doc = SexprDoc()
+    with doc.node("(image"):
+        doc.line(f"(at {fmt_mm(center_x)} {fmt_mm(center_y)})")
+        doc.line(f'(layer "{layer}")')
+        if abs(scale - 1.0) > 1e-9:
+            doc.line(f"(scale {scale:.6g})")
+        doc.embed(format_image_data(png_bytes))
+        doc.line(f"(uuid {quuid()})")
+    return doc
 
 
 def bitmap_sexpr(
@@ -131,7 +134,7 @@ def bitmap_sexpr(
     layer: str,
     center: bool = False,
     preview_coords: bool = False,
-) -> str:
+) -> SexprDoc:
     im = resize_for_silk(load_ink_mask(png_path), size_mm)
     w, h = im.size
     draw_w = size_mm * (w / max(w, h))
@@ -145,11 +148,12 @@ def bitmap_sexpr(
         preview_coords=preview_coords,
     )
     scale = image_scale_for_size(max(w, h), size_mm)
-    data_block = format_image_data(ink_mask_to_png_bytes(im))
-    scale_line = f"\n\t\t(scale {scale:.6g})" if abs(scale - 1.0) > 1e-9 else ""
-    return f"""\t(image
-\t\t(at {fmt_mm(center_x)} {fmt_mm(center_y)})
-\t\t(layer "{layer}"){scale_line}
-{data_block}
-\t\t(uuid {quuid()})
-\t)"""
+    doc = SexprDoc()
+    with doc.node("(image"):
+        doc.line(f"(at {fmt_mm(center_x)} {fmt_mm(center_y)})")
+        doc.line(f'(layer "{layer}")')
+        if abs(scale - 1.0) > 1e-9:
+            doc.line(f"(scale {scale:.6g})")
+        doc.embed(format_image_data(ink_mask_to_png_bytes(im)))
+        doc.line(f"(uuid {quuid()})")
+    return doc
