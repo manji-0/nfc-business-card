@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from card_copy import NAME  # noqa: E402
+from antenna_model import estimate_l_uh, f_res_mhz  # noqa: E402
 from copper_checks import (  # noqa: E402
     check_geometry,
     check_pcb_file,
@@ -260,13 +261,8 @@ print(f"OK: antenna {lay['ant_w']:.1f}×{lay['ant_h']:.1f} mm, {TURNS} turns")
 dists = [math.hypot(x - u1[0], y - u1[1]) for x, y in abs_pts]
 print(f"OK: chip-to-spiral min distance {min(dists):.2f} mm")
 
-n = TURNS
-d_out = (lay["ant_w"] + lay["ant_h"]) / 2
-d_in = d_out - 2 * n * (TRACE_W + GAP)
-d_avg = (d_out + d_in) / 2
-fill = (d_out - d_in) / (d_out + d_in) if (d_out + d_in) else 0
-L_uh = 0.027 * (n**2) * (d_avg / 10) / (1 + 2.75 * fill)
-f_mhz = 1e3 / (2 * math.pi * math.sqrt(L_uh * 50.0)) if L_uh > 0 else 0.0
+L_uh = estimate_l_uh(lay["ant_w"], lay["ant_h"], TURNS, TRACE_W, GAP)
+f_mhz = f_res_mhz(L_uh, 50.0)
 print(f"OK: rough L≈{L_uh:.2f} µH → f_res≈{f_mhz:.1f} MHz with Cin=50 pF (C1 may be needed)")
 if not (1.5 <= L_uh <= 6.0):
     warnings.append(f"L estimate {L_uh:.2f} µH outside expected band")

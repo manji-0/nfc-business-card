@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import math
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -40,6 +39,7 @@ from jlcpcb_limits import (
     NC_VIA_SIZE_MM,
     R0402_PAD_OFFSET_MM,
 )
+from antenna_model import estimate_l_uh, f_res_mhz, rectangular_spiral
 from bake_name_enig import bake_name_enig_sexpr
 from kamae.boundary import require_existing_file
 from kamae.result import Err, unwrap
@@ -672,46 +672,6 @@ def write_xqfn_footprint() -> None:
     lines.append(")")
     path = LIB / "footprints" / "NFC_BusinessCard.pretty" / "XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111.kicad_mod"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def rectangular_spiral(
-    cx: float,
-    cy: float,
-    outer_w: float,
-    outer_h: float,
-    turns: int,
-    width: float,
-    gap: float,
-) -> list[tuple[float, float]]:
-    """Return centerline polyline for a rectangular spiral (outer → inner)."""
-    pts: list[tuple[float, float]] = []
-    left = cx - outer_w / 2
-    right = cx + outer_w / 2
-    bottom = cy - outer_h / 2
-    top = cy + outer_h / 2
-    pitch = width + gap
-
-    # Start at bottom-left outer corner, go CCW inward
-    x, y = left, bottom
-    pts.append((x, y))
-    for t in range(turns):
-        # bottom edge L→R
-        x = right - t * pitch
-        pts.append((x, y))
-        # right edge B→T
-        y = top - t * pitch
-        pts.append((x, y))
-        # top edge R→L
-        x = left + t * pitch
-        pts.append((x, y))
-        # left edge T→B (stop short to leave gap for next turn)
-        y = bottom + (t + 1) * pitch
-        pts.append((x, y))
-        # step inward for next bottom start
-        if t < turns - 1:
-            x = left + (t + 1) * pitch
-            pts.append((x, y))
-    return pts
 
 
 def write_antenna_footprint() -> None:
@@ -1685,8 +1645,8 @@ def write_antenna_footprint_sized(outer_w: float, outer_h: float) -> None:
     d_in = d_out - 2 * n * (TRACE_W + GAP)
     d_avg = (d_out + d_in) / 2
     fill = (d_out - d_in) / (d_out + d_in)
-    L_uh = 0.027 * (n**2) * (d_avg / 10) / (1 + 2.75 * fill)
-    f_mhz = 1e3 / (2 * math.pi * math.sqrt(L_uh * 50.0)) if L_uh > 0 else 0.0
+    L_uh = estimate_l_uh(outer_w, outer_h, n, TRACE_W, GAP)
+    f_mhz = f_res_mhz(L_uh, 50.0)
     (ROOT / "antenna" / "estimate.txt").write_text(
         f"outer_w={outer_w} mm\nouter_h={outer_h} mm\nturns={n}\n"
         f"width={TRACE_W} gap={GAP}\nd_avg={d_avg:.2f} fill={fill:.3f}\n"
