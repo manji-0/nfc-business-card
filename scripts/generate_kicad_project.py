@@ -598,8 +598,8 @@ def write_symbol_lib() -> None:
 \t\t\t(rectangle (start -1.016 -0.508) (end 1.016 0.508) (stroke (width 0.254) (type default)) (fill (type none)))
 \t\t)
 \t\t(symbol "R_0402_1_1"
-\t\t\t(pin passive line (at -{R_SCH_PIN_SPAN} 0 0) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t(pin passive line (at {R_SCH_PIN_SPAN} 0 180) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+\t\t\t(pin passive line (at 0 3.81 270) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+\t\t\t(pin passive line (at 0 -3.81 90) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
 \t\t)
 \t)
 )
@@ -828,128 +828,275 @@ def write_project(schematic_uuid: str) -> None:
     (ROOT / "nfc-business-card.kicad_pro").write_text(project_json, encoding="utf-8")
 
 
-# U1 schematic anchor (1.27 mm grid) — pin tips are pin_length inside the symbol body.
-U1_SCH_X = 127.0
-U1_SCH_Y = 85.09
+# Schematic layout (1.27 mm grid). Sheet Y increases downward.
+SCH_G = 1.27
+U1_SCH_X = 100 * SCH_G  # 127.00
+U1_SCH_Y = 60 * SCH_G  # 76.20
 U1_SCH_PIN_LEN = 2.54
-R_SCH_PIN_SPAN = 3.81
+R_SCH_PIN_SPAN = 3.81  # pin tip ↔ body centre for R_0402
+ANT_SCH_X = 45 * SCH_G  # 57.15
+ANT_SCH_Y = U1_SCH_Y
+C1_SCH_X = 75 * SCH_G  # 95.25 — between ANT and U1, label-joined to LA/LB
+C1_SCH_Y = U1_SCH_Y
+GND_SCH_Y = 95 * SCH_G  # 120.65 — below R bank pin2
+R_BELOW_DY = 18 * SCH_G  # 22.86 — clear of U1 body
+NOTE_SCH_X = 20 * SCH_G
+NOTE_SCH_Y = 105 * SCH_G
+
+
+def _sch_snap(v: float) -> float:
+    return round(round(v / SCH_G) * SCH_G, 2)
 
 
 def _u1_sch_pin_xy(net: str) -> tuple[float, float]:
-    """Electrical connection point on the U1 schematic symbol (body edge).
+    """Electrical connection point on the U1 schematic symbol (pin tip).
 
     Eeschema sheet Y increases downward, while symbol-local +Y is drawn upward,
     so sheet_y = U1_SCH_Y - local_y.
     """
-    # local (dx, dy) in symbol space (+dy = up on the symbol drawing)
     local = {
+        "LA": (-10.16, 5.08),
+        "VSS": (-10.16, 2.54),
         "SCL": (-10.16, 0.0),
         "FD": (-10.16, -2.54),
         "SDA": (10.16, -2.54),
         "VCC": (10.16, 0.0),
         "VOUT": (10.16, 2.54),
-        "VSS": (-10.16, 2.54),
-        "LA": (-10.16, 5.08),
         "LB": (10.16, 5.08),
     }
     dx, dy = local[net]
-    return (U1_SCH_X + dx, U1_SCH_Y - dy)
+    return (_sch_snap(U1_SCH_X + dx), _sch_snap(U1_SCH_Y - dy))
+
+
+def _sch_wire(x0: float, y0: float, x1: float, y1: float) -> str:
+    return (
+        f'\t(wire (pts (xy {x0} {y0}) (xy {x1} {y1})) '
+        f'(stroke (width 0) (type default)) (uuid {uid()}))'
+    )
+
+
+def _sch_label(name: str, x: float, y: float, angle: int, justify: str) -> str:
+    return (
+        f'\t(global_label "{name}" (shape input) (at {x} {y} {angle}) '
+        f'(effects (font (size 1.27 1.27)) (justify {justify} bottom)) '
+        f'(uuid {uid()}))'
+    )
 
 
 def _schematic_nc_terminator_symbols(sheet_path: str) -> str:
-    """R2–R6: 100 kΩ DNP pull-downs from NC pins to GND.
+    """R2–R6 as a spaced vertical DNP bank under U1 to one GND rail.
 
-    R_0402 is horizontal: pin1 west, pin2 east at rot=0. Orient pin1 toward U1
-    (matches PCB pad1 = NC east of pad2 = GND): left-of-U1 → rot 180, right → rot 0.
+    Same-side U1 pins share an X, so resistors cannot sit on the pin column —
+    place them on a 5.08 mm pitch row and jog from each pin.
     """
-    pins = [
-        ("R2", "SCL", 114.3, _u1_sch_pin_xy("SCL")[1]),
-        ("R4", "FD", 114.3, _u1_sch_pin_xy("FD")[1]),
-        ("R3", "SDA", 139.7, _u1_sch_pin_xy("SDA")[1]),
-        ("R5", "VCC", 139.7, _u1_sch_pin_xy("VCC")[1]),
-        ("R6", "VOUT", 139.7, _u1_sch_pin_xy("VOUT")[1]),
-    ]
-    gnd_y = 93.98
+    # L→R under U1 on a 5.08 mm pitch (same-side pins share X; Rs must not).
+    placements = (
+        ("R4", "FD", U1_SCH_X - 2 * 5.08),
+        ("R2", "SCL", U1_SCH_X - 5.08),
+        ("R3", "SDA", U1_SCH_X),
+        ("R5", "VCC", U1_SCH_X + 5.08),
+        ("R6", "VOUT", U1_SCH_X + 2 * 5.08),
+    )
+    ry = _sch_snap(U1_SCH_Y + R_BELOW_DY)
+    pin1_y = _sch_snap(ry - R_SCH_PIN_SPAN)
+    pin2_y = _sch_snap(ry + R_SCH_PIN_SPAN)
     desc = f"{NC_TERM_R_KOHM}k NC pull-down"
     lines: list[str] = []
-    for ref, net, rx, ry in pins:
-        u1x, u1y = _u1_sch_pin_xy(net)
-        left_of_u1 = rx < u1x
-        # pin1 toward U1
-        rot = 180 if left_of_u1 else 0
-        if left_of_u1:
-            r_pin_x = rx + R_SCH_PIN_SPAN  # pin1 (east when rot=180)
-            pin_gnd_x = rx - R_SCH_PIN_SPAN  # pin2
-            label_dx = 2.54
-        else:
-            r_pin_x = rx - R_SCH_PIN_SPAN  # pin1 (west when rot=0)
-            pin_gnd_x = rx + R_SCH_PIN_SPAN  # pin2
-            label_dx = -2.54
+    rail_xs: list[float] = []
+
+    for ref, net, rx in placements:
+        px, py = _u1_sch_pin_xy(net)
+        rx = _sch_snap(rx)
+        rail_xs.append(rx)
+        outside = -2.54 if rx <= U1_SCH_X else 2.54
+        just = "right" if outside < 0 else "left"
         lines.append(
             f"""\t(symbol
 \t\t(lib_id "NFC_BusinessCard:R_0402")
-\t\t(at {rx} {ry} {rot})
+\t\t(at {rx} {ry} 0)
 \t\t(unit 1)
 \t\t(exclude_from_sim no)
 \t\t(in_bom no)
 \t\t(on_board yes)
 \t\t(dnp yes)
 \t\t(uuid {uid()})
-\t\t(property "Reference" "{ref}" (at {rx + label_dx} {ry - 1.27} 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Value" "DNP" (at {rx + label_dx} {ry + 1.27} 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Footprint" "NFC_BusinessCard:R_0402_1005Metric" (at {rx} {ry} {rot}) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Description" "{desc}" (at {rx} {ry} {rot}) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "LCSC Part #" "{NC_TERM_R_LCSC}" (at {rx} {ry} {rot}) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Reference" "{ref}" (at {rx + outside} {ry - 1.27} 0) (effects (font (size 1.27 1.27)) (justify {just})))
+\t\t(property "Value" "DNP" (at {rx + outside} {ry + 1.27} 0) (effects (font (size 1.27 1.27)) (justify {just})))
+\t\t(property "Footprint" "NFC_BusinessCard:R_0402_1005Metric" (at {rx} {ry} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Description" "{desc}" (at {rx} {ry} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "LCSC Part #" "{NC_TERM_R_LCSC}" (at {rx} {ry} 0) (effects (font (size 1.27 1.27)) (hide yes)))
 \t\t(pin "1" (uuid {uid()}))
 \t\t(pin "2" (uuid {uid()}))
 \t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "{ref}") (unit 1))))
 \t)"""
         )
-        lines.append(
-            f'\t(wire (pts (xy {u1x} {u1y}) (xy {r_pin_x} {u1y})) '
-            f'(stroke (width 0) (type default)) (uuid {uid()}))'
-        )
-        # Name the NC net to match PCB (SCL/SDA/…); otherwise parity sees Net-(U1-*).
-        label_x = (u1x + r_pin_x) / 2
-        lines.append(
-            f'\t(global_label "{net}" (shape input) (at {label_x} {u1y} '
-            f'{"0" if left_of_u1 else "180"}) '
-            f'(effects (font (size 1.27 1.27)) '
-            f'(justify {"left" if left_of_u1 else "right"} bottom)) (uuid {uid()}))'
-        )
-        gnd_x = 116.84 if left_of_u1 else 137.16
-        lines.append(
-            f'\t(wire (pts (xy {pin_gnd_x} {ry}) (xy {pin_gnd_x} {gnd_y})) '
-            f'(stroke (width 0) (type default)) (uuid {uid()}))'
-        )
-        lines.append(
-            f'\t(wire (pts (xy {pin_gnd_x} {gnd_y}) (xy {gnd_x} {gnd_y})) '
-            f'(stroke (width 0) (type default)) (uuid {uid()}))'
-        )
+        # Orthogonal jog at the pin's own Y — never share a horizontal across nets.
+        if abs(px - rx) > 1e-9:
+            lines.append(_sch_wire(px, py, rx, py))
+        lines.append(_sch_wire(rx, py, rx, pin1_y))
+        # Outbound stub + label on the pin (net name for PCB parity).
+        lab_x = _sch_snap(px + (-5.08 if px < U1_SCH_X else 5.08))
+        lines.append(_sch_wire(px, py, lab_x, py))
+        ang = 180 if px < U1_SCH_X else 0
+        lab_just = "right" if px < U1_SCH_X else "left"
+        lines.append(_sch_label(net, lab_x, py, ang, lab_just))
+        lines.append(_sch_wire(rx, pin2_y, rx, GND_SCH_Y))
+
+    # Shared GND rail. Power symbols (and reliable T-joins) need wire endpoints,
+    # so segment the rail at every resistor X and at the VSS/GND junction.
+    x0, x1 = min(rail_xs), max(rail_xs)
+    vss_x, vss_y = _u1_sch_pin_xy("VSS")
+    drop_x = _sch_snap(x0 - 2 * SCH_G)
+    gnd_x = drop_x
+    lines.append(_sch_wire(vss_x, vss_y, drop_x, vss_y))
+    lines.append(_sch_wire(drop_x, vss_y, drop_x, GND_SCH_Y))
+    rail_nodes = sorted({_sch_snap(x) for x in (*rail_xs, gnd_x)})
+    for a, b in zip(rail_nodes, rail_nodes[1:]):
+        lines.append(_sch_wire(a, GND_SCH_Y, b, GND_SCH_Y))
+    flag_x = _sch_snap(gnd_x - SCH_G)
+    lines.append(_sch_wire(flag_x, GND_SCH_Y, gnd_x, GND_SCH_Y))
+    lines.append(
+        f"""\t(symbol
+\t\t(lib_id "NFC_BusinessCard:GND")
+\t\t(at {gnd_x} {GND_SCH_Y} 0)
+\t\t(unit 1)
+\t\t(exclude_from_sim no)
+\t\t(in_bom no)
+\t\t(on_board no)
+\t\t(dnp no)
+\t\t(uuid {uid()})
+\t\t(property "Reference" "#PWR01" (at {gnd_x} {GND_SCH_Y + 5.08} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Value" "GND" (at {gnd_x} {GND_SCH_Y + 3.81} 0) (effects (font (size 1.27 1.27))))
+\t\t(property "Footprint" "" (at {gnd_x} {GND_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(pin "1" (uuid {uid()}))
+\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#PWR01") (unit 1))))
+\t)"""
+    )
+    lines.append(
+        f"""\t(symbol
+\t\t(lib_id "NFC_BusinessCard:PWR_FLAG")
+\t\t(at {flag_x} {GND_SCH_Y} 0)
+\t\t(unit 1)
+\t\t(exclude_from_sim no)
+\t\t(in_bom no)
+\t\t(on_board no)
+\t\t(dnp no)
+\t\t(uuid {uid()})
+\t\t(property "Reference" "#FLG01" (at {flag_x} {GND_SCH_Y - 2.54} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Value" "PWR_FLAG" (at {flag_x} {GND_SCH_Y - 2.54} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "Footprint" "" (at {flag_x} {GND_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(pin "1" (uuid {uid()}))
+\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#FLG01") (unit 1))))
+\t)"""
+    )
     return "\n".join(lines)
 
 
-def write_schematic(schematic_uuid: str) -> None:
-    """Minimal schematic: U1 + ANT1 + C1(DNP) + R2–R6(DNP), on 1.27 mm grid."""
-    sheet_path = f"/{schematic_uuid}"
-    nc_terms = _schematic_nc_terminator_symbols(sheet_path)
-    path = ROOT / "nfc-business-card.kicad_sch"
-    path.write_text(
-        f"""(kicad_sch
-\t(version 20231120)
-\t(generator "nfc_business_card")
-\t(generator_version "1.0")
-\t(uuid {schematic_uuid})
-\t(paper "A4")
-\t(title_block
-\t\t(title "NFC Business Card")
-\t\t(date "2026-07-14")
-\t\t(rev "B")
-\t\t(company "")
-\t\t(comment 1 "89x51mm passive NFC URL tag")
-\t\t(comment 2 "NT3H2111W0FHKH LCSC C710403")
-\t)
-\t(lib_symbols
+def _schematic_rf_symbols(sheet_path: str) -> str:
+    """Antenna + C1 + U1 with LA/LB joined by labels (no crossing trunks)."""
+    lines: list[str] = []
+    # U1
+    lines.append(
+        f"""\t(symbol
+\t\t(lib_id "NFC_BusinessCard:NT3H2111W0FHKH")
+\t\t(at {U1_SCH_X} {U1_SCH_Y} 0)
+\t\t(unit 1)
+\t\t(exclude_from_sim no)
+\t\t(in_bom yes)
+\t\t(on_board yes)
+\t\t(dnp no)
+\t\t(uuid {uid()})
+\t\t(property "Reference" "U1" (at {U1_SCH_X} {U1_SCH_Y - 10.16} 0) (effects (font (size 1.27 1.27))))
+\t\t(property "Value" "NT3H2111W0FHKH" (at {U1_SCH_X + 20.32} {U1_SCH_Y} 0) (effects (font (size 1.27 1.27)) (justify left)))
+\t\t(property "Footprint" "NFC_BusinessCard:XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111" (at {U1_SCH_X} {U1_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "LCSC Part #" "C710403" (at {U1_SCH_X} {U1_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(pin "1" (uuid {uid()}))
+\t\t(pin "2" (uuid {uid()}))
+\t\t(pin "3" (uuid {uid()}))
+\t\t(pin "4" (uuid {uid()}))
+\t\t(pin "5" (uuid {uid()}))
+\t\t(pin "6" (uuid {uid()}))
+\t\t(pin "7" (uuid {uid()}))
+\t\t(pin "8" (uuid {uid()}))
+\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "U1") (unit 1))))
+\t)"""
+    )
+    # Antenna
+    lines.append(
+        f"""\t(symbol
+\t\t(lib_id "NFC_BusinessCard:Antenna_NFC")
+\t\t(at {ANT_SCH_X} {ANT_SCH_Y} 0)
+\t\t(unit 1)
+\t\t(exclude_from_sim no)
+\t\t(in_bom no)
+\t\t(on_board yes)
+\t\t(dnp no)
+\t\t(uuid {uid()})
+\t\t(property "Reference" "ANT1" (at {ANT_SCH_X} {ANT_SCH_Y - 7.62} 0) (effects (font (size 1.27 1.27))))
+\t\t(property "Value" "Antenna_NFC" (at {ANT_SCH_X} {ANT_SCH_Y + 7.62} 0) (effects (font (size 1.27 1.27))))
+\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_29x45_5T" (at {ANT_SCH_X} {ANT_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(pin "1" (uuid {uid()}))
+\t\t(pin "2" (uuid {uid()}))
+\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "ANT1") (unit 1))))
+\t)"""
+    )
+    # C1 DNP — joins LA/LB only via labels
+    lines.append(
+        f"""\t(symbol
+\t\t(lib_id "NFC_BusinessCard:C_0402")
+\t\t(at {C1_SCH_X} {C1_SCH_Y} 0)
+\t\t(unit 1)
+\t\t(exclude_from_sim no)
+\t\t(in_bom no)
+\t\t(on_board yes)
+\t\t(dnp yes)
+\t\t(uuid {uid()})
+\t\t(property "Reference" "C1" (at {C1_SCH_X + 3.81} {C1_SCH_Y - 1.27} 0) (effects (font (size 1.27 1.27)) (justify left)))
+\t\t(property "Value" "DNP" (at {C1_SCH_X + 3.81} {C1_SCH_Y + 1.27} 0) (effects (font (size 1.27 1.27)) (justify left)))
+\t\t(property "Footprint" "NFC_BusinessCard:C_0402_1005Metric" (at {C1_SCH_X} {C1_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(property "LCSC Part #" "{C1_LCSC}" (at {C1_SCH_X} {C1_SCH_Y} 0) (effects (font (size 1.27 1.27)) (hide yes)))
+\t\t(pin "1" (uuid {uid()}))
+\t\t(pin "2" (uuid {uid()}))
+\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "C1") (unit 1))))
+\t)"""
+    )
+
+    # ANT stubs + labels (pin1 left / pin2 right at ±5.08)
+    ant1 = (_sch_snap(ANT_SCH_X - 5.08), ANT_SCH_Y)
+    ant2 = (_sch_snap(ANT_SCH_X + 5.08), ANT_SCH_Y)
+    la_ant = (_sch_snap(ant1[0] - 5.08), ANT_SCH_Y)
+    lb_ant = (_sch_snap(ant2[0] + 5.08), ANT_SCH_Y)
+    lines.append(_sch_wire(ant1[0], ant1[1], la_ant[0], la_ant[1]))
+    lines.append(_sch_label("LA", la_ant[0], la_ant[1], 180, "right"))
+    lines.append(_sch_wire(ant2[0], ant2[1], lb_ant[0], lb_ant[1]))
+    lines.append(_sch_label("LB", lb_ant[0], lb_ant[1], 0, "left"))
+
+    # U1 LA/LB stubs + labels
+    la_u1 = _u1_sch_pin_xy("LA")
+    lb_u1 = _u1_sch_pin_xy("LB")
+    la_stub = (_sch_snap(la_u1[0] - 5.08), la_u1[1])
+    lb_stub = (_sch_snap(lb_u1[0] + 5.08), lb_u1[1])
+    lines.append(_sch_wire(la_u1[0], la_u1[1], la_stub[0], la_stub[1]))
+    lines.append(_sch_label("LA", la_stub[0], la_stub[1], 180, "right"))
+    lines.append(_sch_wire(lb_u1[0], lb_u1[1], lb_stub[0], lb_stub[1]))
+    lines.append(_sch_label("LB", lb_stub[0], lb_stub[1], 0, "left"))
+
+    # C1 pin1 (north) → LA, pin2 (south) → LB
+    c1_p1 = (C1_SCH_X, _sch_snap(C1_SCH_Y - R_SCH_PIN_SPAN))
+    c1_p2 = (C1_SCH_X, _sch_snap(C1_SCH_Y + R_SCH_PIN_SPAN))
+    c1_la = (C1_SCH_X, _sch_snap(c1_p1[1] - 2.54))
+    c1_lb = (C1_SCH_X, _sch_snap(c1_p2[1] + 2.54))
+    lines.append(_sch_wire(c1_p1[0], c1_p1[1], c1_la[0], c1_la[1]))
+    lines.append(_sch_label("LA", c1_la[0], c1_la[1], 90, "left"))
+    lines.append(_sch_wire(c1_p2[0], c1_p2[1], c1_lb[0], c1_lb[1]))
+    lines.append(_sch_label("LB", c1_lb[0], c1_lb[1], 270, "right"))
+
+    return "\n".join(lines)
+
+
+def _schematic_lib_symbols() -> str:
+    """Embedded lib_symbols for the root schematic sheet."""
+    return f"""\t(lib_symbols
 \t\t(symbol "NFC_BusinessCard:NT3H2111W0FHKH"
 \t\t\t(pin_names (offset 1.016))
 \t\t\t(exclude_from_sim no)
@@ -1027,8 +1174,8 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t\t\t(rectangle (start -1.016 -0.508) (end 1.016 0.508) (stroke (width 0.254) (type default)) (fill (type none)))
 \t\t\t)
 \t\t\t(symbol "R_0402_1_1"
-\t\t\t\t(pin passive line (at -3.81 0 0) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
-\t\t\t\t(pin passive line (at 3.81 0 180) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+\t\t\t\t(pin passive line (at 0 3.81 270) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+\t\t\t\t(pin passive line (at 0 -3.81 90) (length 2.794) (name "~" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
 \t\t\t)
 \t\t)
 \t\t(symbol "NFC_BusinessCard:GND"
@@ -1064,134 +1211,47 @@ def write_schematic(schematic_uuid: str) -> None:
 \t\t\t)
 \t\t)
 \t)
-\t(symbol
-\t\t(lib_id "NFC_BusinessCard:NT3H2111W0FHKH")
-\t\t(at 127 85.09 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom yes)
-\t\t(on_board yes)
-\t\t(dnp no)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "U1" (at 127 74.93 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Value" "NT3H2111W0FHKH" (at 127 95.25 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Footprint" "NFC_BusinessCard:XQFN-8_1.6x1.6mm_P0.4mm_NT3H2111" (at 127 85.09 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "LCSC Part #" "C710403" (at 127 85.09 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(pin "2" (uuid {uid()}))
-\t\t(pin "3" (uuid {uid()}))
-\t\t(pin "4" (uuid {uid()}))
-\t\t(pin "5" (uuid {uid()}))
-\t\t(pin "6" (uuid {uid()}))
-\t\t(pin "7" (uuid {uid()}))
-\t\t(pin "8" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "U1") (unit 1))))
-\t)
-\t(symbol
-\t\t(lib_id "NFC_BusinessCard:Antenna_NFC")
-\t\t(at 88.9 78.74 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board yes)
-\t\t(dnp no)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "ANT1" (at 88.9 71.12 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Value" "Antenna_NFC" (at 88.9 86.36 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Footprint" "NFC_BusinessCard:Antenna_Spiral_29x45_5T" (at 88.9 78.74 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(pin "2" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "ANT1") (unit 1))))
-\t)
-\t(symbol
-\t\t(lib_id "NFC_BusinessCard:C_0402")
-\t\t(at 106.68 68.58 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board yes)
-\t\t(dnp yes)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "C1" (at 109.22 67.31 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Value" "DNP" (at 109.22 69.85 0) (effects (font (size 1.27 1.27)) (justify left)))
-\t\t(property "Footprint" "NFC_BusinessCard:C_0402_1005Metric" (at 106.68 68.58 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "LCSC Part #" "{C1_LCSC}" (at 106.68 68.58 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(pin "2" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "C1") (unit 1))))
-\t)
-\t(symbol
-\t\t(lib_id "NFC_BusinessCard:GND")
-\t\t(at 116.84 93.98 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board no)
-\t\t(dnp no)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "#PWR01" (at 116.84 100.33 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Value" "GND" (at 116.84 97.79 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Footprint" "" (at 116.84 93.98 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#PWR01") (unit 1))))
-\t)
-\t(symbol
-\t\t(lib_id "NFC_BusinessCard:GND")
-\t\t(at 137.16 93.98 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board no)
-\t\t(dnp no)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "#PWR02" (at 137.16 100.33 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Value" "GND" (at 137.16 97.79 0) (effects (font (size 1.27 1.27))))
-\t\t(property "Footprint" "" (at 137.16 93.98 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#PWR02") (unit 1))))
-\t)
-\t(symbol
-\t\t(lib_id "NFC_BusinessCard:PWR_FLAG")
-\t\t(at 114.3 93.98 0)
-\t\t(unit 1)
-\t\t(exclude_from_sim no)
-\t\t(in_bom no)
-\t\t(on_board no)
-\t\t(dnp no)
-\t\t(uuid {uid()})
-\t\t(property "Reference" "#FLG01" (at 114.3 91.44 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Value" "PWR_FLAG" (at 114.3 91.44 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(property "Footprint" "" (at 114.3 93.98 0) (effects (font (size 1.27 1.27)) (hide yes)))
-\t\t(pin "1" (uuid {uid()}))
-\t\t(instances (project "nfc-business-card" (path "{sheet_path}" (reference "#FLG01") (unit 1))))
-\t)
-\t(wire (pts (xy 83.82 78.74) (xy 81.28 78.74)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(global_label "LA" (shape input) (at 81.28 78.74 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
-\t(wire (pts (xy 116.84 80.01) (xy 114.3 80.01)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(global_label "LA" (shape input) (at 114.3 80.01 180) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
-\t(wire (pts (xy 106.68 72.39) (xy 106.68 74.93)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(global_label "LB" (shape input) (at 106.68 74.93 270) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid {uid()}))
-\t(wire (pts (xy 93.98 78.74) (xy 96.52 78.74)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(global_label "LB" (shape input) (at 96.52 78.74 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
-\t(wire (pts (xy 137.16 80.01) (xy 139.7 80.01)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(global_label "LB" (shape input) (at 139.7 80.01 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
-\t(wire (pts (xy 106.68 64.77) (xy 106.68 62.23)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(global_label "LA" (shape input) (at 106.68 62.23 90) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid {uid()}))
-\t(wire (pts (xy 116.84 {_u1_sch_pin_xy("VSS")[1]}) (xy 116.84 93.98)) (stroke (width 0) (type default)) (uuid {uid()}))
-\t(wire (pts (xy 116.84 93.98) (xy 114.3 93.98)) (stroke (width 0) (type default)) (uuid {uid()}))
-{nc_terms}
-\t(text "Passive NFC business card\\nU1=NT3H2111 (C710403)\\nC1=DNP tuning LA-LB (10-22 pF NP0)\\nR2-R6=DNP 100k to GND (SCL/SDA/FD/VCC/VOUT)\\nVSS=local GND island"
-\t\t(at 88.9 104.14 0)
-\t\t(effects (font (size 1.27 1.27)) (justify left bottom))
-\t\t(uuid {uid()})
-\t)
-\t(sheet_instances
-\t\t(path "{sheet_path}" (page "1"))
-\t)
-)
-""",
-        encoding="utf-8",
+"""
+
+
+def write_schematic(schematic_uuid: str) -> None:
+    """U1 + ANT1 + C1(DNP) + R2–R6(DNP): label-joined RF, vertical NC pull-downs."""
+    sheet_path = f"/{schematic_uuid}"
+    note_uuid = uid()
+    note = f"""\t(text "Passive NFC business card\\nU1=NT3H2111 (C710403)\\nC1=DNP tuning LA-LB (10-22 pF NP0)\\nR2-R6=DNP 100k to GND (SCL/SDA/FD/VCC/VOUT)\\nVSS=local GND island"
+\t\t(at {NOTE_SCH_X} {NOTE_SCH_Y} 0)
+\t\t(effects (font (size 1.27 1.27)) (justify left top))
+\t\t(uuid {note_uuid})
+\t)"""
+    body = "\n".join(
+        [
+            "(kicad_sch",
+            "\t(version 20231120)",
+            '\t(generator "nfc_business_card")',
+            '\t(generator_version "1.0")',
+            f"\t(uuid {schematic_uuid})",
+            '\t(paper "A4")',
+            "\t(title_block",
+            '\t\t(title "NFC Business Card")',
+            '\t\t(date "2026-07-14")',
+            '\t\t(rev "B")',
+            '\t\t(company "")',
+            '\t\t(comment 1 "89x51mm passive NFC URL tag")',
+            '\t\t(comment 2 "NT3H2111W0FHKH LCSC C710403")',
+            "\t)",
+            _schematic_lib_symbols().rstrip(),
+            _schematic_rf_symbols(sheet_path),
+            _schematic_nc_terminator_symbols(sheet_path),
+            note,
+            "\t(sheet_instances",
+            f'\t\t(path "{sheet_path}" (page "1"))',
+            "\t)",
+            ")",
+            "",
+        ]
     )
+    (ROOT / "nfc-business-card.kicad_sch").write_text(body, encoding="utf-8")
+
 
 
 def build_silk_bitmaps(ant_cx: float, ant_cy: float) -> str:
