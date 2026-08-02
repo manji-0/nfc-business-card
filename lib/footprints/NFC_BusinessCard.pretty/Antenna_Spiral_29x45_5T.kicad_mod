@@ -18,7 +18,7 @@
 		(layers "F.Cu")
 		(roundrect_rratio 0)
 		(net "LA")
-		(uuid "ea18f400-71a6-478b-a4a8-62e9cc48b897")
+		(uuid "2fc0b410-92df-4997-939d-7ff877b61bfa")
 	)
 	(pad "2" connect roundrect
 		(at -11.0000 -19.3750)
@@ -26,6 +26,6 @@
 		(layers "F.Cu")
 		(roundrect_rratio 0)
 		(net "LB")
-		(uuid "e2d8dcbc-decc-4cdf-97e2-36b1275d8502")
+		(uuid "0f407721-a736-4cd4-be90-79ab1b251fbc")
 	)
 )
