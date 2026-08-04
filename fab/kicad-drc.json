@@ -1,0 +1,127 @@
+{
+    "$schema": "https://schemas.kicad.org/drc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-08-04T16:03:49",
+    "ignored_checks": [
+        {
+            "description": "Footprint has no courtyard defined",
+            "key": "missing_courtyard"
+        },
+        {
+            "description": "Track endpoint not centered on via",
+            "key": "track_not_centered_on_via"
+        },
+        {
+            "description": "Tuning profile track geometries",
+            "key": "tuning_profile_track_geometries"
+        },
+        {
+            "description": "Footprint doesn't match symbol's footprint filters",
+            "key": "footprint_filters_mismatch"
+        },
+        {
+            "description": "Footprint component type doesn't match footprint pads",
+            "key": "footprint_type_mismatch"
+        }
+    ],
+    "included_severities": [
+        "error",
+        "warning"
+    ],
+    "kicad_version": "10.0.4",
+    "schematic_parity": [],
+    "source": "nfc-business-card.kicad_pcb",
+    "unconnected_items": [],
+    "violations": [
+        {
+            "description": "フットプリント 'Antenna_Spiral_29x45_5T' が、ライブラリ 'NFC_BusinessCard' のコピーと一致しません",
+            "items": [
+                {
+                    "description": "フットプリント ANT1",
+                    "pos": {
+                        "x": 71.5,
+                        "y": 25.5
+                    },
+                    "uuid": "5e823b22-9516-4282-a857-7fb48c2dfd51"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Non-Mirrored text on back layer",
+            "items": [
+                {
+                    "description": "R2の値フィールド ( DNP )",
+                    "pos": {
+                        "x": 50.9,
+                        "y": 10.375
+                    },
+                    "uuid": "6fe4de0c-85f3-45a1-8c91-301e300123f1"
+                }
+            ],
+            "severity": "warning",
+            "type": "nonmirrored_text_on_back_layer"
+        },
+        {
+            "description": "Non-Mirrored text on back layer",
+            "items": [
+                {
+                    "description": "R4の値フィールド ( DNP )",
+                    "pos": {
+                        "x": 50.9,
+                        "y": 11.575
+                    },
+                    "uuid": "7c6ba30c-2faf-41d1-87de-2f33bc67f6f8"
+                }
+            ],
+            "severity": "warning",
+            "type": "nonmirrored_text_on_back_layer"
+        },
+        {
+            "description": "Non-Mirrored text on back layer",
+            "items": [
+                {
+                    "description": "R3の値フィールド ( DNP )",
+                    "pos": {
+                        "x": 50.9,
+                        "y": 12.775
+                    },
+                    "uuid": "c72cd151-ce60-4704-bb92-032f3ec57e00"
+                }
+            ],
+            "severity": "warning",
+            "type": "nonmirrored_text_on_back_layer"
+        },
+        {
+            "description": "Non-Mirrored text on back layer",
+            "items": [
+                {
+                    "description": "R5の値フィールド ( DNP )",
+                    "pos": {
+                        "x": 50.9,
+                        "y": 13.975
+                    },
+                    "uuid": "028bfba1-4fa9-4789-b535-784f0b926a99"
+                }
+            ],
+            "severity": "warning",
+            "type": "nonmirrored_text_on_back_layer"
+        },
+        {
+            "description": "Non-Mirrored text on back layer",
+            "items": [
+                {
+                    "description": "R6の値フィールド ( DNP )",
+                    "pos": {
+                        "x": 50.9,
+                        "y": 15.175
+                    },
+                    "uuid": "14497f01-d5cb-4c42-bb4a-814912c73c67"
+                }
+            ],
+            "severity": "warning",
+            "type": "nonmirrored_text_on_back_layer"
+        }
+    ]
+}
